@@ -1,0 +1,10 @@
+export type Theme = "blue" | "purple" | "pink";
+export type Role = "owner" | "deputy" | "buyer";
+export type Profile = {id:string; first_name:string; last_name:string; username:string; photo_url:string; role:Role; theme:Theme|null; referred_by:string|null; balance:number};
+export type Category = {id:string; name:string; parent_id:string|null};
+export type Product = {id:string; title:string; description:string; price:number; stock:number; category_id:string|null; image_url:string; active:boolean};
+export type Banner = {id:string; title:string; subtitle:string; image_url:string};
+export type Settings = {name:string; description:string; theme:Theme; glow:Theme; referral_reward:number; purchase_percent:number; banners:Banner[]};
+export type Order = {id:string; total:number; status:string; created_at:string; user_id:string; items:{productId:string; title:string; price:number; quantity:number}[]; contact:string; address:string};
+export type Snapshot = {settings:Settings; categories:Category[]; products:Product[]; me:Profile|null; orders:Order[]; ledger:{id:string; amount:number; reason:string; created_at:string}[]; referrals:number; team:Profile[]; stats:{visitors:number; orders:number; paid:number; revenue:number}; configured:boolean};
+export const defaultSettings:Settings = {name:"Мой магазин",description:"Ваши находки — в одном месте",theme:"blue",glow:"blue",referral_reward:0,purchase_percent:0,banners:[]};

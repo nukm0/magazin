@@ -1,0 +1,2 @@
+export const money=(n:number)=>new Intl.NumberFormat("ru-RU",{style:"currency",currency:"RUB",maximumFractionDigits:2}).format(n/100);
+export const statusName:Record<string,string>={awaiting_payment_setup:"Ожидает подключения оплаты",pending:"Ожидает оплаты",paid:"Оплачен",shipped:"Отправлен",completed:"Завершён",cancelled:"Отменён",refunded:"Возврат"};
