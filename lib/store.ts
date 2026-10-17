@@ -1,3 +1,4 @@
+import {publicCatalog} from "./catalog";
 import type {PoolClient} from "pg";
 import {database,transaction} from "./db";
 import {validateInitData,roleFor} from "./auth";
@@ -25,7 +26,7 @@ export async function actor(request:Request) {
  });
 }
 export async function snapshot(request:Request):Promise<Snapshot> {
- if(!process.env.DATABASE_URL)return {settings:defaultSettings,categories:[],products:[],me:null,orders:[],ledger:[],referrals:0,team:[],stats:{visitors:0,orders:0,paid:0,revenue:0},configured:false};
+ if(!process.env.DATABASE_URL)return {settings:publicCatalog.settings,categories:publicCatalog.categories,products:publicCatalog.products,me:null,orders:[],ledger:[],referrals:0,team:[],stats:{visitors:0,orders:0,paid:0,revenue:0},configured:false};
  const me=await actor(request), admin=!!me && me.role!=="buyer";
  const db=database();
  const [s,c,p,o,b,r,t,stats]=await Promise.all([

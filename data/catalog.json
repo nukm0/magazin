@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "name": "Mide Shop",
+    "description": "Ваши находки — в одном месте",
+    "theme": "pink",
+    "glow": "purple",
+    "referral_reward": 0,
+    "purchase_percent": 0,
+    "banners": []
+  },
+  "categories": [],
+  "products": [
+    {
+      "id": "adbaf080-3e72-436a-9f1f-0cafed9e0fd7",
+      "title": "1",
+      "description": "1",
+      "price": 100,
+      "stock": 0,
+      "category_id": null,
+      "image_url": "/api/media/50bd808f-c8fc-41c7-8621-948586e8d857",
+      "active": true
+    }
+  ],
+  "media": {
+    "50bd808f-c8fc-41c7-8621-948586e8d857": "50bd808f-c8fc-41c7-8621-948586e8d857.webp"
+  }
+}
