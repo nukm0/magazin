@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {ArrowRight,ArrowUpRight,Check,ChevronLeft,ChevronRight,Gift,Grid2X2,Heart,LayoutDashboard,Package,Search,ShoppingBag,ShoppingCart,SlidersHorizontal,Sparkles,UserRound,X,Plus,Minus,RefreshCw} from "lucide-react";
 import type {Product,Snapshot,Theme} from "@/lib/types";
-import {catalogPreview,previewMutation} from "@/lib/demo";
+import {catalogPreview,previewMutation,withPreviewProfiles,switchPreviewProfile,previewRoleNames} from "@/lib/demo";
 import {defaultSettings} from "@/lib/types";
 import Admin from "./admin";
 import {money,statusName} from "@/lib/format";
@@ -21,10 +21,10 @@ export default function Storefront(){
  useEffect(()=>{
   const isPreview=new URLSearchParams(window.location.search).get("preview")==="1";setPreview(isPreview);
   window.Telegram?.WebApp.ready();window.Telegram?.WebApp.expand();
-  if(isPreview){try{const saved=localStorage.getItem("magazin-preview-v2");setData(saved?JSON.parse(saved):catalogPreview());}catch{setData(catalogPreview());}setLoaded(true);}
+  if(isPreview){try{const saved=localStorage.getItem("magazin-preview-v2");setData(withPreviewProfiles(saved?JSON.parse(saved):catalogPreview()));}catch{setData(withPreviewProfiles(catalogPreview()));}setLoaded(true);}
   else load().catch(e=>setError(e.message)).finally(()=>setLoaded(true));
  },[load]);
- const cartKey=preview?"magazin-cart-preview-v1":(data.local?"magazin-local-cart-v1-":"magazin-cart-v1-")+(data.me?.id||"guest");
+ const cartKey=preview?"magazin-cart-preview-v2-"+(data.me?.id||"guest"):(data.local?"magazin-local-cart-v1-":"magazin-cart-v1-")+(data.me?.id||"guest");
  useEffect(()=>{try{const value=JSON.parse(localStorage.getItem(cartKey)||"{}");setCart(Object.fromEntries(Object.entries(value).filter(([k,v])=>/^[\da-f-]{36}$/i.test(k)&&typeof v==="number"&&Number.isInteger(v)&&v>0&&v<=99)) as Record<string,number>);}catch{setCart({});}setCartLoaded(cartKey);},[cartKey]);
  useEffect(()=>{if(cartLoaded===cartKey){try{localStorage.setItem(cartKey,JSON.stringify(cart));}catch{}}},[cart,cartKey,cartLoaded]);
  useEffect(()=>{if(preview && loaded){try{localStorage.setItem("magazin-preview-v2",JSON.stringify(data));}catch{setError("Память предпросмотра заполнена. Используйте меньше изображений.");}}},[data,loaded,preview]);
@@ -36,13 +36,14 @@ export default function Storefront(){
  async function act(input:unknown){
   setBusy(true);setError("");
   try{
-   if(preview){if(input&&typeof input==="object"&&"action" in input&&input.action==="image"&&"data" in input)return {url:input.data};setData(previewMutation(data,input));setNotice("Сохранено в предпросмотре");return;}
+   if(preview){if(input&&typeof input==="object"&&"action" in input&&input.action==="image"&&"data" in input){previewMutation(data,input);return {url:input.data};}setData(previewMutation(data,input));setNotice("Сохранено в предпросмотре");return;}
    const response=await fetch("/api/store",{method:"POST",headers:{"Content-Type":"application/json","x-local-user":localUser,"x-local-referrer":new URLSearchParams(window.location.search).get("ref")||"",Authorization:"tma "+(window.Telegram?.WebApp.initData||"")},body:JSON.stringify(input)});
    const result=await response.json();if(!response.ok)throw new Error(result.error);
    await load();setNotice("Сохранено");return result;
   }catch(e){setError(e instanceof Error?e.message:"Не удалось сохранить");throw e;}finally{setBusy(false);}
  }
  function add(p:Product){if(!p.active||!p.stock)return;setCart(c=>({...c,[p.id]:Math.min(p.stock,99,(c[p.id]||0)+1)}));setNotice("Товар в корзине");}
+ useEffect(()=>{if(tab==="admin"&&data.me?.role==="buyer")setTab("profile");},[tab,data.me?.role]);
  const products=data.products.filter(p=>p.active),admin=!!data.me&&data.me.role!=="buyer";
  const visible=products.filter(p=>(!query||(p.title+" "+p.description).toLowerCase().includes(query.toLowerCase()))&&(!category||p.category_id===category||data.categories.some(c=>c.id===p.category_id&&c.parent_id===category))&&(!inStock||p.stock>0)&&(!maxPrice||p.price<=Number(maxPrice)*100)).sort((a,b)=>sort==="asc"?a.price-b.price:sort==="desc"?b.price-a.price:0);
  const entries=Object.entries(cart).map(([id,quantity])=>({p:data.products.find(p=>p.id===id),id,quantity}));
@@ -55,6 +56,7 @@ export default function Storefront(){
   <main className="main"><header className="topbar"><span className="breadcrumb">Магазин <span>/</span> {tabs.find(t=>t.id===tab)?.label}</span><span className="telegram-pill"><span/> Внутри Telegram</span><button className="avatar" title="Личный кабинет" onClick={()=>setTab("profile")}>{data.me?.first_name?.slice(0,1)||<UserRound size={18}/>}</button></header>
   {data.local?<div className="setup-strip local-toolbar"><span>Локальный режим · данные сохраняются на компьютере · платежи тестовые</span><label>Войти как<select aria-label="Локальный аккаунт" value={localUser} onChange={e=>{setLocalUser(e.target.value);setTab("catalog");setBonusSpend(0);orderKey.current=null;}}><option value="998579758">nukm0 · ID 998579758</option><option value="100000001">Покупатель · ID 100000001</option><option value="100000002">Заместитель · ID 100000002</option></select></label></div>:null}
   {preview?<div className="setup-strip">Предпросмотр · изменения хранятся только в этом браузере · реальные заказы отключены <a href="/">Выйти <ArrowUpRight size={14}/></a></div>:!data.configured&&loaded?<div className="setup-strip">Витрина магазина · оформление заказов скоро станет доступно</div>:null}
+  {preview&&data.me?<div className="preview-accounts"><label>Посмотреть как<select aria-label="Аккаунт для просмотра" value={data.me.id} onChange={e=>{setData(switchPreviewProfile(data,e.target.value));setTab("profile");setError("");setNotice("");}}>{data.team.map(p=><option key={p.id} value={p.id}>{previewRoleNames[p.role]} · {p.first_name} · ID {p.id}</option>)}</select></label><small>Тестовые аккаунты · доступ к общему магазину определяется ролью</small></div>:null}
   {error?<div className="alert error" role="alert">{error}<button onClick={()=>setError("")} aria-label="Закрыть ошибку"><X size={16}/></button></div>:null}
   <div className="content">
   {!loaded?<div className="empty"><RefreshCw className="spin"/><h2>Открываем магазин…</h2></div>:null}
