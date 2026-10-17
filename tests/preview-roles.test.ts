@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {catalogPreview,withPreviewProfiles,switchPreviewProfile,previewMutation} from "../lib/demo";
 test("Preview roles enforce store and team permissions, revocation persists",()=>{
  let s=withPreviewProfiles(catalogPreview());
- assert.deepEqual(s.team.map(p=>p.role),["owner","buyer","deputy"]);
+ assert.deepEqual(s.team.map(p=>p.role),["owner","buyer","deputy","seller","seller"]);
  s=switchPreviewProfile(s,"100000001");
  assert.throws(()=>previewMutation(s,{action:"category",name:"Denied",parent_id:null}),/покупателя/);
  s=previewMutation(s,{action:"theme",theme:"purple"});

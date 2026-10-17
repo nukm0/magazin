@@ -1,0 +1,61 @@
+import {z} from "zod";
+import type {Snapshot} from "./types";
+const uuid=z.string().uuid(),quantity=z.number().int().min(0).max(1000000);
+const schema=z.discriminatedUnion("action",[
+ z.object({action:z.literal("claimOrder"),id:uuid}),
+ z.object({action:z.literal("acceptOrder"),id:uuid}),
+ z.object({action:z.literal("deliverOrder"),id:uuid}),
+ z.object({action:z.literal("returnOrder"),id:uuid,reason:z.string().trim().min(3).max(1000)}),
+ z.object({action:z.literal("demoOrder"),id:uuid,items:z.array(z.object({productId:uuid,quantity:quantity.min(1).max(99)})).min(1).max(50),contact:z.string().trim().min(1).max(200),address:z.string().trim().min(1).max(1000)}),
+ z.object({action:z.literal("stockReceipt"),id:uuid,productId:uuid,quantity:quantity.min(1),note:z.string().trim().min(1).max(500)}),
+ z.object({action:z.literal("inventoryReview"),id:uuid,note:z.string().trim().min(1).max(500),items:z.array(z.object({productId:uuid,expected:quantity,actual:quantity})).min(1).max(500)})
+]);
+export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
+ const a=schema.parse(input),s=structuredClone(state),me=s.me;
+ if(!me)throw new Error("Выберите аккаунт");
+ const created_at=new Date().toISOString();s.inventoryReviews??=[];s.orderEvents??=[];s.sellerEarnings??=[];s.sellerStocks??=[];
+ if(a.action==="demoOrder"){
+ if(me.role!=="buyer")throw new Error("Заказ создаёт только покупатель");if(s.orders.some(o=>o.id===a.id))return s;
+ if(new Set(a.items.map(i=>i.productId)).size!==a.items.length)throw new Error("Повтор товара");
+ const items=a.items.map(i=>{const p=s.products.find(p=>p.id===i.productId&&p.active);if(!p||p.stock<i.quantity)throw new Error("Недостаточно товара");return {...i,title:p.title,price:p.price};});
+ const delivery_fee=Math.max(...items.map(i=>s.products.find(p=>p.id===i.productId)?.delivery_price||0));
+ s.orders.push({id:a.id,user_id:me.id,created_at,status:"open",seller_id:null,items,contact:a.contact,address:a.address,delivery_fee,show_delivery:items.some(i=>s.products.find(p=>p.id===i.productId)?.show_delivery),total:items.reduce((n,i)=>n+i.price*i.quantity,0)+delivery_fee});return s;
+ }
+ if(me.role!=="seller")throw new Error("Действие доступно только продавцу");
+ const own=s.sellerStocks.filter(p=>p.seller_id===me.id);
+ const get=(id:string)=>{const stock=own.find(p=>p.productId===id),product=s.products.find(p=>p.id===id);if(!stock||!product)throw new Error("Товар не числится на вашем складе");return {stock,product};};
+ if(["claimOrder","returnOrder","acceptOrder","deliverOrder"].includes(a.action)){
+ const o=s.orders.find(o=>o.id===a.id);if(!o)throw new Error("Заказ не найден");
+ const event=(type:"claimed"|"returned"|"accepted"|"delivered",reason="")=>s.orderEvents!.push({id:crypto.randomUUID(),order_id:o.id,seller_id:me.id,type,reason,created_at});
+ if(a.action==="claimOrder"){if(o.status!=="open"||o.seller_id)throw new Error("Заказ уже взял другой продавец");o.status="claimed";o.seller_id=me.id;o.claimed_at=created_at;event("claimed");}
+ else{
+ if(o.seller_id!==me.id)throw new Error("Заказ закреплён за другим продавцом");
+ if(a.action==="returnOrder"){if(o.status!=="claimed")throw new Error("Вернуть можно заказ до принятия в доставку");o.status="open";o.seller_id=null;event("returned",a.reason);}
+ else if(a.action==="acceptOrder"){
+ if(o.status!=="claimed")throw new Error("Сначала возьмите заказ и свяжитесь с покупателем");
+ for(const i of o.items){const {stock,product}=get(i.productId);if(stock.quantity<i.quantity||product.stock<i.quantity)throw new Error("На вашем складе недостаточно товара. Пополните склад или верните заказ с причиной");}
+ for(const i of o.items){const {stock,product}=get(i.productId);stock.quantity-=i.quantity;product.stock-=i.quantity;}
+ o.status="delivering";event("accepted");
+ }else{
+ if(o.status==="completed"&&s.sellerEarnings.some(e=>e.order_id===o.id))return s;
+ if(o.status!=="delivering")throw new Error("Сначала примите заказ в доставку");
+ o.status="completed";o.delivered_at=created_at;
+ if(!s.sellerEarnings.some(e=>e.order_id===o.id)){const amount=o.delivery_fee||0;s.sellerEarnings.push({order_id:o.id,seller_id:me.id,amount,created_at});me.seller_balance=(me.seller_balance||0)+amount;s.team=s.team.map(p=>p.id===me.id?structuredClone(me):p);}
+ event("delivered");
+ }
+ }
+ return s;
+ }
+ if(a.action==="stockReceipt"){
+ if(s.inventoryReviews.some(r=>r.id===a.id))return s;
+ const {stock,product}=get(a.productId);if(stock.quantity+a.quantity>1000000||product.stock+a.quantity>1000000)throw new Error("Превышен максимальный остаток");
+ s.inventoryReviews.push({id:a.id,created_at,seller_id:me.id,note:"Поступление: "+a.note,items:[{productId:product.id,title:product.title,expected:stock.quantity,actual:stock.quantity+a.quantity,difference:a.quantity}]});stock.quantity+=a.quantity;product.stock+=a.quantity;
+ }else if(a.action==="inventoryReview"){
+ if(s.inventoryReviews.some(r=>r.id===a.id))return s;
+ if(new Set(a.items.map(i=>i.productId)).size!==a.items.length||a.items.length!==own.length)throw new Error("Пересчитайте все свои товары без повторов");
+ const items=a.items.map(i=>{const {stock,product}=get(i.productId);if(stock.quantity!==i.expected)throw new Error("Остатки изменились. Начните ревизию заново");return {...i,title:product.title,difference:i.actual-i.expected};});
+ for(const i of items){const {stock,product}=get(i.productId);stock.quantity=i.actual;product.stock+=i.difference;}
+ s.inventoryReviews.push({id:a.id,created_at,seller_id:me.id,note:a.note,items});
+ }
+ return s;
+}
