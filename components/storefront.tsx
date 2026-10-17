@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {ArrowRight,ArrowUpRight,Check,ChevronLeft,ChevronRight,Gift,Grid2X2,Heart,LayoutDashboard,Package,Search,ShoppingBag,ShoppingCart,SlidersHorizontal,Sparkles,UserRound,X,Plus,Minus,RefreshCw} from "lucide-react";
 import type {Product,Snapshot,Theme} from "@/lib/types";
-import {blankPreview,previewMutation} from "@/lib/demo";
+import {catalogPreview,previewMutation} from "@/lib/demo";
 import {defaultSettings} from "@/lib/types";
 import Admin from "./admin";
 import {money,statusName} from "@/lib/format";
@@ -21,13 +21,13 @@ export default function Storefront(){
  useEffect(()=>{
   const isPreview=new URLSearchParams(window.location.search).get("preview")==="1";setPreview(isPreview);
   window.Telegram?.WebApp.ready();window.Telegram?.WebApp.expand();
-  if(isPreview){try{const saved=localStorage.getItem("magazin-preview-v1");setData(saved?JSON.parse(saved):blankPreview());}catch{setData(blankPreview());}setLoaded(true);}
+  if(isPreview){try{const saved=localStorage.getItem("magazin-preview-v2");setData(saved?JSON.parse(saved):catalogPreview());}catch{setData(catalogPreview());}setLoaded(true);}
   else load().catch(e=>setError(e.message)).finally(()=>setLoaded(true));
  },[load]);
  const cartKey=preview?"magazin-cart-preview-v1":(data.local?"magazin-local-cart-v1-":"magazin-cart-v1-")+(data.me?.id||"guest");
  useEffect(()=>{try{const value=JSON.parse(localStorage.getItem(cartKey)||"{}");setCart(Object.fromEntries(Object.entries(value).filter(([k,v])=>/^[\da-f-]{36}$/i.test(k)&&typeof v==="number"&&Number.isInteger(v)&&v>0&&v<=99)) as Record<string,number>);}catch{setCart({});}setCartLoaded(cartKey);},[cartKey]);
  useEffect(()=>{if(cartLoaded===cartKey){try{localStorage.setItem(cartKey,JSON.stringify(cart));}catch{}}},[cart,cartKey,cartLoaded]);
- useEffect(()=>{if(preview && loaded){try{localStorage.setItem("magazin-preview-v1",JSON.stringify(data));}catch{setError("Память предпросмотра заполнена. Используйте меньше изображений.");}}},[data,loaded,preview]);
+ useEffect(()=>{if(preview && loaded){try{localStorage.setItem("magazin-preview-v2",JSON.stringify(data));}catch{setError("Память предпросмотра заполнена. Используйте меньше изображений.");}}},[data,loaded,preview]);
  useEffect(()=>{if(paused||data.settings.banners.length<2)return;const id=setInterval(()=>setSlide(s=>(s+1)%data.settings.banners.length),5000);return()=>clearInterval(id);},[data.settings.banners.length,paused]);
  useEffect(()=>{if(!notice)return;const id=setTimeout(()=>setNotice(""),5000);return()=>clearTimeout(id);},[notice]);
  useEffect(()=>{if(!selected)return;lastFocus.current=document.activeElement as HTMLElement;modalClose.current?.focus();const old=document.body.style.overflow;document.body.style.overflow="hidden";

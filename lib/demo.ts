@@ -1,3 +1,4 @@
+import {publicCatalog} from "./catalog";
 import {actionSchema} from "./validation";
 import {defaultSettings,type Snapshot} from "./types";
 export function blankPreview():Snapshot{return {settings:structuredClone(defaultSettings),products:[],categories:[],me:{id:"998579758",first_name:"Владелец",last_name:"",username:"",photo_url:"",role:"owner",theme:null,referred_by:null,balance:0},orders:[],ledger:[],referrals:0,team:[],stats:{visitors:0,orders:0,paid:0,revenue:0},configured:true};}
@@ -22,3 +23,5 @@ export function previewMutation(state:Snapshot,input:unknown):Snapshot{
  }
  return s;
 }
+
+export function catalogPreview():Snapshot{const s=blankPreview();s.settings=structuredClone(publicCatalog.settings);s.categories=structuredClone(publicCatalog.categories);s.products=structuredClone(publicCatalog.products);s.me!.first_name="нукмо";s.me!.username="nukm0";return s;}
