@@ -13,7 +13,7 @@ function product(db:LocalStore,stock=5){
  return db.snapshot(owner).products[0].id;
 }
 function order(db:LocalStore,id:string,productId:string,bonus=0,key=randomUUID()){
- db.mutate(id,{action:"order",items:[{productId,quantity:1}],contact:"Тестовый контакт",address:"Самовывоз",idempotency_key:key,spend_bonus:bonus});
+ db.mutate(id,{action:"order",items:[{productId,quantity:1}],contact:"@testbuyer",address:"Самовывоз",idempotency_key:key,spend_bonus:bonus});
  return db.snapshot(id).orders[0];
 }
 test("Local login is nukm0 owner; SQLite data survives reopening",()=>{
@@ -61,7 +61,7 @@ test("Local checkout is idempotent and rejects duplicate products and unsupporte
  const db=new LocalStore(":memory:");
  try{const p=product(db),key=randomUUID();order(db,owner,p,0,key);order(db,owner,p,0,key);assert.equal(db.snapshot(owner).orders.length,1);
  assert.throws(()=>db.snapshot("555"));
- assert.throws(()=>db.mutate(owner,{action:"order",items:[{productId:p,quantity:1},{productId:p,quantity:1}],contact:"Тест",address:"Тест",idempotency_key:randomUUID()}));
+ assert.throws(()=>db.mutate(owner,{action:"order",items:[{productId:p,quantity:1},{productId:p,quantity:1}],contact:"@testbuyer",address:"Тест",idempotency_key:randomUUID()}));
  }finally{db.close();}
 });
 test("Local bypass requires development, loopback, matching host and no Vercel",()=>{

@@ -30,4 +30,5 @@ CREATE INDEX IF NOT EXISTS ledger_user_idx ON bonus_ledger(user_id);
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS measurements jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}'::jsonb;
 CREATE TABLE IF NOT EXISTS bot_starts(user_id text PRIMARY KEY,referred_by text REFERENCES profiles(id),created_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS comment text NOT NULL DEFAULT '';
 COMMIT;

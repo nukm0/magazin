@@ -1,10 +1,11 @@
 export type Accent="purple"|"blue"|"pink"|"red"|"mono";
 export type PersonalStyle={background:Accent;glow:Accent;text:"white"|"black";image:string};
-export type Notice={id:string;user_id:string;text:string;created_at:string;source:string};
+export type Notice={read_at?:string;id:string;user_id:string;text:string;created_at:string;source:string};
 export type FinanceEntry={id:string;seller_id:string;kind:"fine"|"premium";amount:number;reason:string;created_at:string;actor_id:string;order_event?:string};
 export type SellerContact={phone:string;vk:string;address:string;photo:string};
 export type Rate={id:string;scope:"product"|"category"|"seller";target_id:string;seller_id:string;amount:number};
 export type AuditRequest={id:string;seller_id:string;note:string;created_at:string;status:"pending"|"submitted"|"approved";photo:string;items:{productId:string;expected:number;good:number;damaged:number}[];submitted_at?:string;approved_at?:string};
 export type BonusRule={id:string;name:string;kind:"fixed"|"percent";value:number;requirements:{category_id:string;product_id:string;quantity:number}[]};
 export type BonusEntry={id:string;user_id:string;amount:number;reason:string;source:string;created_at:string};
-export type Workspace={version:number;logo:string;background:string;accent:Accent;glow:Accent;bannerStyles:Record<string,{accent:Accent;imageOnly:boolean}>;contacts:Record<string,SellerContact>;rates:Rate[];finance:FinanceEntry[];audits:AuditRequest[];notices:Notice[];notifications:boolean;reviewedEvents:string[];referral:{kind:"fixed"|"percent";value:number;limit:number|null};bonusRules:BonusRule[];bonuses:BonusEntry[]};
+export type Complaint={id:string;order_id:string;buyer_id:string;seller_id:string|null;reason:string;comment:string;created_at:string;status:"new"|"reviewed";reviewed_at?:string};
+export type Workspace={complaints?:Complaint[];version:number;logo:string;background:string;accent:Accent;glow:Accent;bannerStyles:Record<string,{accent:Accent;imageOnly:boolean}>;contacts:Record<string,SellerContact>;rates:Rate[];finance:FinanceEntry[];audits:AuditRequest[];notices:Notice[];notifications:boolean;reviewedEvents:string[];referral:{kind:"fixed"|"percent";value:number;limit:number|null};bonusRules:BonusRule[];bonuses:BonusEntry[]};

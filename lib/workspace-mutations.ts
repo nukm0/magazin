@@ -1,8 +1,12 @@
+import {canComplain,complaintReasons} from "./buyer";
 import {z} from "zod";
 import type {Snapshot} from "./types";
 import {initWorkspace,syncProfile,notify,manualBonus} from "./workspace";
 const id=z.string().uuid(),short=z.string().trim().max(1000),amount=z.number().int().nonnegative().max(100000000),image=z.string().max(2800000).refine(v=>!v||/^https:\/\//.test(v)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v),"Нужно изображение PNG, JPEG, WebP или HTTPS-ссылка"),accent=z.enum(["purple","blue","pink","red","mono"]);
 const schema=z.discriminatedUnion("action",[
+ z.object({action:z.literal("readNotices"),ids:z.array(id).max(1000)}),
+ z.object({action:z.literal("complainOrder"),id,order_id:id,reason:z.enum(complaintReasons),comment:short.min(3)}),
+ z.object({action:z.literal("reviewComplaint"),id}),
  z.object({action:z.literal("selfAudit"),id}),
  z.object({action:z.literal("allocateStock"),seller_id:z.string(),productId:id,quantity:amount}),
  z.object({action:z.literal("personalStyle"),value:z.object({background:accent,glow:accent,text:z.enum(["white","black"]),image})}),
@@ -25,10 +29,20 @@ const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("manualBonus"),id,target:z.string().trim().min(1),amount:amount.positive(),reason:short.min(3)}),
  z.object({action:z.literal("notificationSettings"),enabled:z.boolean()})
 ]);
-export const workspaceActions=new Set(["personalStyle","shopStyle","bannerStyle","productVariants","assignRole","financeEntry","reviewReturn","setRate","deleteRate","requestAudit","remindAudit","submitAudit","approveAudit","rewardSettings","bonusRule","deleteBonusRule","manualBonus","notificationSettings","selfAudit","allocateStock","returnAudit"]);
+export const workspaceActions=new Set(["complainOrder","readNotices","reviewComplaint","personalStyle","shopStyle","bannerStyle","productVariants","assignRole","financeEntry","reviewReturn","setRate","deleteRate","requestAudit","remindAudit","submitAudit","approveAudit","rewardSettings","bonusRule","deleteBonusRule","manualBonus","notificationSettings","selfAudit","allocateStock","returnAudit"]);
 export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  const parsed=schema.safeParse(input);if(!parsed.success)throw new Error("Проверьте обязательные поля, суммы и формат изображений");
  const a=parsed.data,s=initWorkspace(structuredClone(state)),w=s.workspace!,me=s.me;if(!me)throw new Error("Войдите в аккаунт");const admin=["owner","deputy"].includes(me.role),now=new Date().toISOString();
+ if(a.action==="readNotices"){for(const n of w.notices)if(n.user_id===me.id&&a.ids.includes(n.id)&&!n.read_at)n.read_at=now;return s;}
+ if(a.action==="complainOrder"){
+ if(me.role!=="buyer")throw new Error("Жалобу может подать покупатель");
+ const o=s.orders.find(o=>o.id===a.order_id&&o.user_id===me.id);if(!o)throw new Error("Заказ не найден");
+ if(w.complaints!.some(c=>c.order_id===o.id&&c.buyer_id===me.id))return s;
+ if(!canComplain(o))throw new Error("Жалобу можно подать в течение 24 часов после доставки");
+ w.complaints!.push({id:a.id,order_id:o.id,buyer_id:me.id,seller_id:o.seller_id||null,reason:a.reason,comment:a.comment,created_at:now,status:"new"});
+ for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,"Жалоба на заказ #"+o.id.slice(-8)+" от @"+me.username+". "+a.reason+": "+a.comment,"complaint:"+a.id,true);
+ notify(s,me.id,"Жалоба на заказ #"+o.id.slice(-8)+" передана владельцу и заместителю.","complaint-confirm:"+a.id,true);return s;
+ }
  if(a.action==="personalStyle"){me.personal=a.value;syncProfile(s,me);return s;}
  if(a.action==="selfAudit"){if(me.role!=="seller")throw new Error("Доступно продавцу");if(!w.audits.some(r=>r.id===a.id))w.audits.push({id:a.id,seller_id:me.id,note:"Ревизия по инициативе продавца",created_at:now,status:"pending",photo:"",items:[]});return s;}
  if(a.action==="submitAudit"){
@@ -39,6 +53,7 @@ export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  }
  if(!admin)throw new Error("Доступно владельцу и заместителю");
  switch(a.action){
+ case "reviewComplaint":{const c=w.complaints!.find(c=>c.id===a.id);if(!c)throw new Error("Жалоба не найдена");c.status="reviewed";c.reviewed_at=now;break;}
  case "allocateStock":{const p=s.products.find(p=>p.id===a.productId);if(!p||!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Выберите товар и продавца");s.sellerStocks??=[];const others=s.sellerStocks.filter(r=>r.productId===p.id&&r.seller_id!==a.seller_id).reduce((n,r)=>n+r.quantity,0);if(others+a.quantity>p.stock)throw new Error("Недостаточно свободного товара на складе магазина");s.sellerStocks=s.sellerStocks.filter(r=>!(r.productId===p.id&&r.seller_id===a.seller_id)).concat({seller_id:a.seller_id,productId:p.id,quantity:a.quantity});break;}
  case "shopStyle":s.settings.name=a.name;s.settings.description=a.description;w.logo=a.logo;w.background=a.background;w.accent=a.accent;w.glow=a.glow;break;
  case "bannerStyle":if(!s.settings.banners.some(b=>b.id===a.id))throw new Error("Баннер не найден");w.bannerStyles[a.id]={accent:a.accent,imageOnly:a.imageOnly};break;

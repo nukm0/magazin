@@ -1,0 +1,11 @@
+"use client";
+import {useState} from "react";
+import {Bell} from "lucide-react";
+import type {Snapshot} from "@/lib/types";
+import {Sheet,useSave,ErrorText,type Action} from "./workspace-ui";
+export default function WorkspaceInbox({data,act,busy}:{data:Snapshot;act:Action;busy:boolean}){
+ const [open,setOpen]=useState(false),{save,error}=useSave(act),me=data.me!;
+ const notices=(data.workspace?.notices||[]).filter(n=>n.user_id===me.id).toReversed(),unread=notices.filter(n=>!n.read_at);
+ const admin=["owner","deputy"].includes(me.role),complaints=admin?(data.workspace?.complaints||[]).toReversed():[];
+ return <><button className="panel inbox-tile" onClick={()=>setOpen(true)}><Bell size={22}/><strong>Уведомления</strong><span>{unread.length?"Новых: "+unread.length:"Нет новых уведомлений"}</span></button>{open?<Sheet title="Уведомления" close={()=>setOpen(false)}><div className="stack"><ErrorText text={error}/>{unread.length?<button className="secondary" disabled={busy} onClick={()=>void save({action:"readNotices",ids:unread.map(n=>n.id)})}>Отметить прочитанными</button>:null}{admin&&complaints.length?<section className="stack"><h3>Жалобы покупателей</h3>{complaints.map(c=><article className="panel stack" key={c.id}><strong>Заказ #{c.order_id.slice(-8)} · {c.status==="new"?"Новая жалоба":"Рассмотрена"}</strong><p>Покупатель: @{data.team.find(p=>p.id===c.buyer_id)?.username||c.buyer_id}</p><p>Продавец: @{data.team.find(p=>p.id===c.seller_id)?.username||"не назначен"}</p><strong>{c.reason}</strong><p className="preserve-lines">{c.comment}</p><small>{new Date(c.created_at).toLocaleString("ru-RU")}</small>{c.status==="new"?<button className="secondary" disabled={busy} onClick={()=>void save({action:"reviewComplaint",id:c.id})}>Отметить рассмотренной</button>:null}</article>)}</section>:null}<h3>События</h3>{notices.map(n=><article className="panel stack" key={n.id}><small>{new Date(n.created_at).toLocaleString("ru-RU")} · {n.read_at?"Прочитано":"Новое"}</small><p className="preserve-lines">{n.text}</p></article>)}{!notices.length?<p>Уведомлений пока нет.</p>:null}<small>Деморежим: события сохраняются в приложении. Отправка в Telegram требует подключения бота и серверной базы.</small></div></Sheet>:null}</>;
+}

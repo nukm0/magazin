@@ -22,13 +22,13 @@ test("Order total and line prices come from catalog, never the submitted cart",a
  if(sql.startsWith("INSERT INTO orders")){stored=args;return {rows:[{id:"new-order"}]};}
  return {rows:[],rowCount:0};
  }} as unknown as PoolClient;
- const action=actionSchema.parse({action:"order",idempotency_key:crypto.randomUUID(),items:[{productId,quantity:2,price:1}],total:1,contact:"Тест",address:"Самовывоз"});
+ const action=actionSchema.parse({action:"order",idempotency_key:crypto.randomUUID(),items:[{productId,quantity:2,price:1}],total:1,contact:"@testbuyer",address:"Самовывоз"});
  await applyMutation(client,me,action);assert.equal(stored[2],25098);assert.equal(JSON.parse(stored[1] as string)[0].price,12549);
 });
 test("Repeated checkout key returns the existing order without another insert",async()=>{
  const me={...blankPreview().me!,id:"123",role:"buyer" as const};let inserts=0;
  const client={query:async(sql:string)=>{if(sql.startsWith("SELECT role"))return {rows:[{role:"buyer"}]};if(sql.startsWith("SELECT id FROM orders"))return {rows:[{id:"existing-order"}]};if(sql.startsWith("INSERT"))inserts++;return {rows:[]};}} as unknown as PoolClient;
- const result=await applyMutation(client,me,actionSchema.parse({action:"order",idempotency_key:crypto.randomUUID(),items:[{productId:crypto.randomUUID(),quantity:1}],contact:"Тест",address:"Самовывоз"}));
+ const result=await applyMutation(client,me,actionSchema.parse({action:"order",idempotency_key:crypto.randomUUID(),items:[{productId:crypto.randomUUID(),quantity:1}],contact:"@testbuyer",address:"Самовывоз"}));
  assert.equal((result as {orderId:string}).orderId,"existing-order");assert.equal(inserts,0);
 });
 

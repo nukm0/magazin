@@ -37,7 +37,7 @@ export async function snapshot(request:Request):Promise<Snapshot> {
  db.query("SELECT * FROM products WHERE active OR $1 ORDER BY created_at DESC",[admin]),
  me?db.query("SELECT * FROM orders WHERE user_id=$1 OR $2 ORDER BY created_at DESC LIMIT 100",[me.id,admin]):null,
  me?db.query("SELECT * FROM bonus_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100",[me.id]):null,
- me?db.query("SELECT count(*)::int AS count FROM profiles WHERE referred_by=$1",[me.id]):null,
+ me?db.query("SELECT count(*)::int AS count FROM (SELECT id FROM profiles WHERE referred_by=$1 UNION SELECT user_id FROM bot_starts WHERE referred_by=$1) referrals",[me.id]):null,
  admin?db.query("SELECT id,first_name,last_name,username,photo_url,CASE WHEN id=(SELECT owner_id FROM ownership WHERE id=1) THEN 'owner' ELSE role END AS role,theme,referred_by FROM profiles WHERE role='deputy' OR id=(SELECT owner_id FROM ownership WHERE id=1)",[]):null,
  admin?db.query(`SELECT (SELECT count(*)::int FROM profiles) AS visitors,count(*)::int AS orders,count(*) FILTER(WHERE status IN ('paid','shipped','completed'))::int AS paid,COALESCE(sum(total) FILTER(WHERE status IN ('paid','shipped','completed')),0)::float8 AS revenue FROM orders`):null
  ]);
@@ -105,7 +105,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const total=items.reduce((s,i)=>s+i.price*i.quantity,0);
    if(!Number.isSafeInteger(total)||total>100000000)throw new ApiError(400,"Сумма заказа слишком большая");
    if((await c.query("SELECT 1 FROM orders WHERE user_id=$1 AND created_at>now()-interval '1 minute' LIMIT 1",[me.id])).rowCount)throw new ApiError(429,"Подождите минуту перед следующим заказом");
-   const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key) VALUES($1,$2,$3,$4,$5,$6) RETURNING id",[me.id,JSON.stringify(items),total,a.contact,a.address,a.idempotency_key])).rows[0];
+   const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key,comment) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[me.id,JSON.stringify(items),total,a.contact,a.address,a.idempotency_key,a.comment||""])).rows[0];
    return {ok:true,orderId:order.id};
   }
   if(a.action==="orderStatus"){

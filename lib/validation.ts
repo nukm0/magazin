@@ -1,5 +1,6 @@
 import {z} from "zod";
 const uuid=z.string().uuid();
+export const telegramContact=z.string().trim().regex(/^@?[A-Za-z][A-Za-z0-9_]{4,31}$/, "Укажите username Telegram").transform(v=>"@"+v.replace(/^@/,""));
 const text=(max:number)=>z.string().trim().min(1).max(max);
 const field=z.string().regex(/^(size|color|material|length|weight|quantity|custom_[0-9a-f-]{36})$/);
 const measurements=z.array(z.object({key:field,unit:z.string().trim().max(20),label:z.string().trim().min(1).max(60).optional()})).max(30);
@@ -16,7 +17,7 @@ export const actionSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("theme"),theme:theme.nullable()}),
  z.object({action:z.literal("transferOwner"),id:z.string().regex(/^[1-9]\d{0,15}$/)}),
  z.object({action:z.literal("deputy"),id:z.string().regex(/^[1-9]\d{0,15}$/),enabled:z.boolean()}),
- z.object({action:z.literal("order"),idempotency_key:uuid,items:z.array(z.object({productId:uuid,quantity:z.number().int().min(1).max(99)})).min(1).max(50),contact:text(200),address:text(1000)}),
+ z.object({action:z.literal("order"),idempotency_key:uuid,items:z.array(z.object({productId:uuid,quantity:z.number().int().min(1).max(99)})).min(1).max(50),contact:telegramContact,address:text(1000),comment:z.string().trim().max(1000).optional()}),
  z.object({action:z.literal("orderStatus"),id:uuid,status:z.enum(["cancelled","shipped","completed"])})
 ]);
 export function rublesToKopecks(input:string) {
