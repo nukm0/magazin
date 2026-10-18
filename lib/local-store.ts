@@ -1,3 +1,4 @@
+import {validateAttributes,validateMeasurements} from "./measurements";
 import {DatabaseSync} from "node:sqlite";
 import {mkdirSync} from "node:fs";
 import {dirname,resolve} from "node:path";
@@ -94,12 +95,12 @@ export class LocalStore {
      if(a.parent_id){const parent=state.categories.find(c=>c.id===a.parent_id);if(!parent||parent.parent_id||a.id===a.parent_id)throw new LocalError(400,"Выберите главную категорию");if(a.id&&state.categories.some(c=>c.parent_id===a.id))throw new LocalError(400,"Сначала перенесите подкатегории");}
      const existing=a.id?state.categories.find(c=>c.id===a.id):null;
      if(a.id&&!existing)throw new LocalError(404,"Категория не найдена");
-     if(existing)Object.assign(existing,{name:a.name,parent_id:a.parent_id});else state.categories.push({id:randomUUID(),name:a.name,parent_id:a.parent_id});break;
+     if(existing)Object.assign(existing,{name:a.name,parent_id:a.parent_id,measurements:validateMeasurements(a.measurements??existing.measurements??[])});else state.categories.push({id:randomUUID(),name:a.name,parent_id:a.parent_id,measurements:validateMeasurements(a.measurements??[])});break;
     }
     case "deleteCategory":if(state.categories.some(c=>c.parent_id===a.id)||state.products.some(p=>p.category_id===a.id))throw new LocalError(409,"Сначала перенесите товары и подкатегории");state.categories=state.categories.filter(c=>c.id!==a.id);break;
     case "product":{
      if(a.category_id&&!state.categories.some(c=>c.id===a.category_id))throw new LocalError(400,"Категория не найдена");
-     const p={id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,stock:a.stock,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
+     const p={attributes:validateAttributes(state.categories,a.category_id,a.attributes),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,stock:a.stock,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
      const index=state.products.findIndex(x=>x.id===a.id);
      if(a.id&&index<0)throw new LocalError(404,"Товар не найден");
      if(index>=0)state.products[index]=p;else state.products.push(p);break;
@@ -107,7 +108,7 @@ export class LocalStore {
     case "deleteProduct":{const p=state.products.find(p=>p.id===a.id);if(p)p.active=false;break;}
     case "deputy":
     case "transferOwner":{
-     if(me.role!=="owner")throw new LocalError(403,"Доступно только владельцу");
+     if(a.action==="transferOwner"&&me.role!=="owner")throw new LocalError(403,"Передать магазин может только владелец");
      const target=state.profiles[a.id];
      if(!target)throw new LocalError(400,"Пользователь должен сначала открыть магазин. Выберите тестовый профиль в верхней панели.");
      if(a.action==="deputy"){if(a.id===state.ownerId)throw new LocalError(400,"Нельзя изменить права владельца");target.role=a.enabled?"deputy":"buyer";}

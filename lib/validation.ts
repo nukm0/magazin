@@ -1,15 +1,17 @@
 import {z} from "zod";
 const uuid=z.string().uuid();
 const text=(max:number)=>z.string().trim().min(1).max(max);
+const field=z.enum(["size","color","material","length","weight","quantity"]);
+const measurements=z.array(z.object({key:field,unit:z.enum(["","см","м","г","кг","шт.","пары"])})).max(6);
 const theme=z.enum(["blue","purple","pink"]);
 const picture=z.string().max(2800000).refine(v=>!v || /^\/demo-clothes\/(hoodie|pants|tee)\.svg$/.test(v) || /^\/api\/media\/[0-9a-f-]{36}$/.test(v) || /^https:\/\//i.test(v) || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v),"Нужна HTTPS-ссылка или изображение PNG/JPEG/WebP");
 export const settingsSchema=z.object({name:text(80),description:z.string().trim().max(1000),theme,glow:theme,referral_reward:z.number().int().min(0).max(100000),purchase_percent:z.number().int().min(0).max(100),banners:z.array(z.object({id:uuid,title:text(100),subtitle:z.string().max(250),image_url:picture})).max(8)});
 export const actionSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("image"),data:z.string().max(2800000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)}),
  z.object({action:z.literal("settings"),value:settingsSchema}),
- z.object({action:z.literal("category"),id:uuid.optional(),name:text(80),parent_id:uuid.nullable()}),
+ z.object({action:z.literal("category"),id:uuid.optional(),name:text(80),parent_id:uuid.nullable(),measurements:measurements.optional()}),
  z.object({action:z.literal("deleteCategory"),id:uuid}),
- z.object({action:z.literal("product"),id:uuid.optional(),title:text(150),description:z.string().max(5000),price:z.number().int().min(100).max(100000000),stock:z.number().int().min(0).max(1000000),category_id:uuid.nullable(),image_url:picture,active:z.boolean(),delivery_price:z.number().int().min(0).max(10000000).optional(),show_delivery:z.boolean().optional()}),
+ z.object({action:z.literal("product"),id:uuid.optional(),title:text(150),description:z.string().max(5000),price:z.number().int().min(100).max(100000000),stock:z.number().int().min(0).max(1000000),category_id:uuid.nullable(),image_url:picture,active:z.boolean(),attributes:z.partialRecord(field,z.string().trim().max(80)).optional(),delivery_price:z.number().int().min(0).max(10000000).optional(),show_delivery:z.boolean().optional()}),
  z.object({action:z.literal("deleteProduct"),id:uuid}),
  z.object({action:z.literal("theme"),theme:theme.nullable()}),
  z.object({action:z.literal("transferOwner"),id:z.string().regex(/^[1-9]\d{0,15}$/)}),

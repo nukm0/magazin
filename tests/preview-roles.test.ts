@@ -9,7 +9,8 @@ test("Preview roles enforce store and team permissions, revocation persists",()=
  s=previewMutation(s,{action:"theme",theme:"purple"});
  s=switchPreviewProfile(s,"100000002");
  s=previewMutation(s,{action:"category",name:"Allowed",parent_id:null});
- assert.throws(()=>previewMutation(s,{action:"deputy",id:"100000001",enabled:true}),/владелец/);
+ const appointed=previewMutation(s,{action:"deputy",id:"100000001",enabled:true});assert.equal(appointed.team.find(p=>p.id==="100000001")?.role,"deputy");
+ assert.throws(()=>previewMutation(s,{action:"deputy",id:"998579758",enabled:false}),/владельца/);
  s=switchPreviewProfile(s,"998579758");
  assert.equal(s.categories.at(-1)?.name,"Allowed");
  s=previewMutation(s,{action:"deputy",id:"100000002",enabled:false});

@@ -1,3 +1,4 @@
+import {validateAttributes,validateMeasurements} from "./measurements";
 import {seedDemo} from "./demo-seed";
 import {sellerMutation} from "./seller-demo";
 import {publicCatalog} from "./catalog";
@@ -8,23 +9,23 @@ export function previewMutation(state:Snapshot,input:unknown):Snapshot{
  if(input&&typeof input==="object"&&"action" in input&&["claimOrder","returnOrder","acceptOrder","deliverOrder","inventoryReview","stockReceipt","demoOrder"].includes(String(input.action)))return sellerMutation(state,input);
  const a=actionSchema.parse(input),s=withPreviewProfiles(structuredClone(state));
  if(!s.me)throw new Error("Выберите аккаунт");
- if(["deputy","transferOwner"].includes(a.action)&&s.me.role!=="owner")throw new Error("Управлять доступом может только владелец");
+ if(a.action==="transferOwner"&&s.me.role!=="owner")throw new Error("Управлять доступом может только владелец");
  if(!["theme","order"].includes(a.action)&&s.me.role==="buyer")throw new Error("У покупателя нет доступа к управлению магазином");
  if(s.me.role==="seller"&&a.action!=="theme")throw new Error("Продавцу доступны учёт товаров и работа с заказами");
  switch(a.action){
  case "image":break;
  case "settings":s.settings=a.value;break;
  case "theme":if(s.me)s.me.theme=a.theme;break;
- case "product":{const old=s.products.find(p=>p.id===a.id);const p={...a,id:a.id||crypto.randomUUID(),seller_id:old?.seller_id||s.me.id,sku:old?.sku||"SKU-"+crypto.randomUUID().slice(0,8).toUpperCase()};s.products=s.products.filter(x=>x.id!==p.id).concat(p);break;}
+ case "product":{a.attributes=validateAttributes(s.categories,a.category_id,a.attributes);const old=s.products.find(p=>p.id===a.id);const p={...a,id:a.id||crypto.randomUUID(),seller_id:old?.seller_id||s.me.id,sku:old?.sku||"SKU-"+crypto.randomUUID().slice(0,8).toUpperCase()};s.products=s.products.filter(x=>x.id!==p.id).concat(p);break;}
  case "deleteProduct":s.products=s.products.map(p=>p.id===a.id?{...p,active:false}:p);break;
  case "category":{
  if(a.parent_id && (a.parent_id===a.id || s.categories.find(c=>c.id===a.parent_id)?.parent_id))throw new Error("Выберите главную категорию");
  if(a.parent_id && a.id && s.categories.some(c=>c.parent_id===a.id))throw new Error("Сначала перенесите подкатегории");
- const c={id:a.id||crypto.randomUUID(),name:a.name,parent_id:a.parent_id};s.categories=s.categories.filter(x=>x.id!==c.id).concat(c);break;
+ const c={id:a.id||crypto.randomUUID(),name:a.name,parent_id:a.parent_id,measurements:validateMeasurements(a.measurements??s.categories.find(c=>c.id===a.id)?.measurements??[])};s.categories=s.categories.filter(x=>x.id!==c.id).concat(c);break;
  }
  case "deleteCategory":if(s.categories.some(c=>c.parent_id===a.id)||s.products.some(p=>p.category_id===a.id))throw new Error("Категория используется");s.categories=s.categories.filter(c=>c.id!==a.id);break;
  case "transferOwner":{const target=s.team.find(p=>p.id===a.id);if(!target)throw new Error("Пользователь не найден в предпросмотре");if(target.id===s.me.id)break;for(const p of s.team)if(p.role==="owner")p.role="buyer";target.role="owner";s.me.role="buyer";break;}
- case "deputy":{const target=s.team.find(p=>p.id===a.id);if(!target)throw new Error("Для проверки используйте ID тестового покупателя или заместителя из переключателя аккаунтов");if(target.role==="owner")throw new Error("Нельзя изменить права владельца");target.role=a.enabled?"deputy":"buyer";break;}
+ case "deputy":{const target=s.team.find(p=>p.id===a.id);if(!target)throw new Error("Для проверки используйте ID тестового покупателя или заместителя из переключателя аккаунтов");if(target.role==="owner")throw new Error("Нельзя изменить права владельца");target.role=a.enabled?"deputy":"buyer";if(target.id===s.me.id)s.me.role=target.role;break;}
  case "order":throw new Error("В предпросмотре заказы не отправляются. Подключите Telegram и базу данных.");
  case "orderStatus":if(s.demoVersion)throw new Error("Заказ обрабатывает закреплённый продавец в своём кабинете");s.orders=s.orders.map(o=>o.id===a.id?{...o,status:a.status}:o);break;
  }

@@ -1,3 +1,4 @@
+import {validateAttributes,validateMeasurements} from "./measurements";
 import {publicCatalog} from "./catalog";
 import type {PoolClient} from "pg";
 import {database,transaction} from "./db";
@@ -61,7 +62,6 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
   if(a.action==="image"){const image=(await c.query("INSERT INTO media(data) VALUES($1) RETURNING id",[a.data])).rows[0];return {ok:true,url:"/api/media/"+image.id};}
   if(a.action==="theme"){await c.query("UPDATE profiles SET theme=$1 WHERE id=$2",[a.theme,me.id]);return {ok:true};}
   if(a.action==="deputy"){
-   if(role!=="owner")throw new ApiError(403,"Только владелец может назначать и отзывать заместителей");
    if(a.id===owner)throw new ApiError(400,"Нельзя изменить права владельца");
    const result=await c.query("UPDATE profiles SET role=$1 WHERE id=$2",[a.enabled?"deputy":"buyer",a.id]);
    if(!result.rowCount)throw new ApiError(400,"Пользователь должен сначала открыть мини-приложение");
@@ -79,14 +79,16 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
     if(!parent || parent.parent_id || a.id===a.parent_id)throw new ApiError(400,"Выберите главную категорию");
     if(a.id && (await c.query("SELECT 1 FROM categories WHERE parent_id=$1 LIMIT 1",[a.id])).rowCount)throw new ApiError(400,"Сначала перенесите подкатегории");
    }
-   if(a.id)await c.query("UPDATE categories SET name=$1,parent_id=$2 WHERE id=$3",[a.name,a.parent_id,a.id]);
-   else await c.query("INSERT INTO categories(name,parent_id) VALUES($1,$2)",[a.name,a.parent_id]);
+   if(a.id)await c.query("UPDATE categories SET name=$1,parent_id=$2,measurements=COALESCE($4::jsonb,measurements) WHERE id=$3",[a.name,a.parent_id,a.id,a.measurements?JSON.stringify(validateMeasurements(a.measurements)):null]);
+   else await c.query("INSERT INTO categories(name,parent_id,measurements) VALUES($1,$2,$3)",[a.name,a.parent_id,JSON.stringify(validateMeasurements(a.measurements??[]))]);
   }
   if(a.action==="deleteCategory")await c.query("DELETE FROM categories WHERE id=$1",[a.id]);
   if(a.action==="product"){
+   const categories=(await c.query("SELECT * FROM categories")).rows;
+   const attributes=validateAttributes(categories,a.category_id,a.attributes);
    const args=[a.title,a.description,a.price,a.stock,a.category_id,await savePicture(c,a.image_url),a.active];
-   if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7 WHERE id=$8",[...args,a.id]);
-   else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active) VALUES($1,$2,$3,$4,$5,$6,$7)",args);
+   if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7,attributes=$9 WHERE id=$8",[...args,a.id,JSON.stringify(attributes)]);
+   else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active,attributes) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[...args,JSON.stringify(attributes)]);
   }
   if(a.action==="deleteProduct")await c.query("UPDATE products SET active=false WHERE id=$1",[a.id]);
   if(a.action==="order"){

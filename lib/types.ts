@@ -1,8 +1,10 @@
 export type Theme = "blue" | "purple" | "pink";
 export type Role = "owner" | "deputy" | "buyer" | "seller";
 export type Profile = {id:string; first_name:string; last_name:string; username:string; photo_url:string; role:Role; theme:Theme|null; referred_by:string|null; balance:number;seller_balance?:number};
-export type Category = {id:string; name:string; parent_id:string|null};
-export type Product = {id:string; title:string; description:string; price:number; stock:number; category_id:string|null; image_url:string; active:boolean; seller_id?:string; sku?:string;delivery_price?:number;show_delivery?:boolean};
+export type ClothingField="size"|"color"|"material"|"length"|"weight"|"quantity";
+export type Measurement={key:ClothingField;unit:string};
+export type Category = {measurements?:Measurement[];id:string; name:string; parent_id:string|null};
+export type Product = {attributes?:Partial<Record<ClothingField,string>>;id:string; title:string; description:string; price:number; stock:number; category_id:string|null; image_url:string; active:boolean; seller_id?:string; sku?:string;delivery_price?:number;show_delivery?:boolean};
 export type Banner = {id:string; title:string; subtitle:string; image_url:string};
 export type Settings = {name:string; description:string; theme:Theme; glow:Theme; referral_reward:number; purchase_percent:number; banners:Banner[]};
 export type Order = {seller_id?:string|null;delivery_fee?:number;show_delivery?:boolean;claimed_at?:string;delivered_at?:string;id:string; total:number; status:string; created_at:string; user_id:string; items:{productId:string; title:string; price:number; quantity:number}[]; contact:string; address:string};

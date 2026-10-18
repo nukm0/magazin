@@ -6,10 +6,14 @@ test("Revoked deputy cannot mutate even with a stale admin profile",async()=>{
  await assert.rejects(()=>applyMutation(client,me,actionSchema.parse({action:"deleteProduct",id:crypto.randomUUID()})),(e:unknown)=>e instanceof ApiError&&e.status===403);
  }finally{if(old===undefined)delete process.env.OWNER_TELEGRAM_ID;else process.env.OWNER_TELEGRAM_ID=old;}
 });
-test("Deputy cannot appoint another deputy or revoke owner",async()=>{
- const me={...blankPreview().me!,id:"123",role:"deputy" as const};const client={query:async()=>({rows:[{role:"deputy"}]})} as unknown as PoolClient;
- await assert.rejects(()=>applyMutation(client,me,actionSchema.parse({action:"deputy",id:"456",enabled:true})),(e:unknown)=>e instanceof ApiError&&e.status===403);
+test("Deputy can manage deputies but cannot alter the owner",async()=>{
+ const me={...blankPreview().me!,id:"123",role:"deputy" as const};let updates=0;
+ const client={query:async(sql:string)=>{if(sql.startsWith("SELECT owner_id"))return {rows:[{owner_id:"998579758"}]};if(sql.startsWith("SELECT role"))return {rows:[{role:"deputy"}]};if(sql.startsWith("UPDATE profiles"))updates++;return {rows:[],rowCount:1};}} as unknown as PoolClient;
+ await applyMutation(client,me,actionSchema.parse({action:"deputy",id:"456",enabled:true}));assert.equal(updates,1);
+ await assert.rejects(()=>applyMutation(client,me,actionSchema.parse({action:"deputy",id:"998579758",enabled:false})),(e:unknown)=>e instanceof ApiError&&e.status===400);
+ await assert.rejects(()=>applyMutation(client,me,actionSchema.parse({action:"transferOwner",id:"456"})));assert.equal(updates,1);
 });
+
 test("Order total and line prices come from catalog, never the submitted cart",async()=>{
  const me={...blankPreview().me!,id:"123",role:"buyer" as const},productId=crypto.randomUUID();let stored:unknown[]=[];
  const client={query:async(sql:string,args:unknown[])=>{
