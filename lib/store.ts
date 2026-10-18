@@ -17,7 +17,8 @@ export async function actor(request:Request) {
   if(!/^[1-9]\d{0,15}$/.test(process.env.OWNER_TELEGRAM_ID||""))throw new ApiError(503,"Не задан ID первого владельца");
   await c.query("INSERT INTO ownership(id,owner_id) VALUES(1,$1) ON CONFLICT DO NOTHING",[process.env.OWNER_TELEGRAM_ID]);
   const owner=(await c.query("SELECT owner_id FROM ownership WHERE id=1")).rows[0].owner_id;
-  const ref=/^ref_([1-9]\d{0,15})$/.exec(data.start_param)?.[1];
+  const firstStart=(await c.query("SELECT referred_by FROM bot_starts WHERE user_id=$1",[id])).rows[0];
+  const ref=firstStart?firstStart.referred_by:/^ref_([1-9]\d{0,15})$/.exec(data.start_param)?.[1];
   await c.query(`INSERT INTO profiles(id,first_name,last_name,username,photo_url,referred_by)
     VALUES($1,$2,$3,$4,$5,(SELECT id FROM profiles WHERE id=$6 AND id<>$1))
     ON CONFLICT(id) DO UPDATE SET first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,username=EXCLUDED.username,photo_url=EXCLUDED.photo_url,last_seen=now()`,

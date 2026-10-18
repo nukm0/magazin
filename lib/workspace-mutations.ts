@@ -1,0 +1,62 @@
+import {z} from "zod";
+import type {Snapshot} from "./types";
+import {initWorkspace,syncProfile,notify,manualBonus} from "./workspace";
+const id=z.string().uuid(),short=z.string().trim().max(1000),amount=z.number().int().nonnegative().max(100000000),image=z.string().max(2800000).refine(v=>!v||/^https:\/\//.test(v)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v),"Нужно изображение PNG, JPEG, WebP или HTTPS-ссылка"),accent=z.enum(["purple","blue","pink","red","mono"]);
+const schema=z.discriminatedUnion("action",[
+ z.object({action:z.literal("selfAudit"),id}),
+ z.object({action:z.literal("allocateStock"),seller_id:z.string(),productId:id,quantity:amount}),
+ z.object({action:z.literal("personalStyle"),value:z.object({background:accent,glow:accent,text:z.enum(["white","black"]),image})}),
+ z.object({action:z.literal("shopStyle"),name:z.string().trim().min(1).max(80),description:short,logo:image,background:image,accent,glow:accent}),
+ z.object({action:z.literal("bannerStyle"),id,accent,imageOnly:z.boolean()}),
+ z.object({action:z.literal("productVariants"),id,variants:z.array(z.string().trim().min(1).max(80)).max(30)}),
+ z.object({action:z.literal("assignRole"),target:z.string().trim().min(1).max(64),role:z.enum(["buyer","seller","deputy"]),name:z.string().trim().max(80),phone:short,vk:short,address:short,photo:image}),
+ z.object({action:z.literal("financeEntry"),id,seller_id:z.string(),kind:z.enum(["fine","premium"]),amount:amount.positive(),reason:short.min(3),order_event:id.optional()}),
+ z.object({action:z.literal("reviewReturn"),event_id:id}),
+ z.object({action:z.literal("setRate"),scope:z.enum(["product","category","seller"]),target_id:z.string(),seller_id:z.string(),amount}),
+ z.object({action:z.literal("deleteRate"),id}),
+ z.object({action:z.literal("requestAudit"),id,seller_id:z.string(),note:short}),
+ z.object({action:z.literal("remindAudit"),id,note:short}),
+ z.object({action:z.literal("submitAudit"),id,note:short,photo:image.min(1),items:z.array(z.object({productId:id,good:amount,damaged:amount})).min(1).max(500)}),
+ z.object({action:z.literal("approveAudit"),id}),
+ z.object({action:z.literal("returnAudit"),id,note:short.min(3)}),
+ z.object({action:z.literal("rewardSettings"),kind:z.enum(["fixed","percent"]),value:amount,limit:z.number().int().positive().max(1000000).nullable(),purchase_percent:z.number().min(0).max(100)}),
+ z.object({action:z.literal("bonusRule"),id,name:short.min(1),kind:z.enum(["fixed","percent"]),value:amount,requirements:z.array(z.object({category_id:z.string(),product_id:z.string(),quantity:z.number().int().min(1).max(1000)})).min(1).max(10)}),
+ z.object({action:z.literal("deleteBonusRule"),id}),
+ z.object({action:z.literal("manualBonus"),id,target:z.string().trim().min(1),amount:amount.positive(),reason:short.min(3)}),
+ z.object({action:z.literal("notificationSettings"),enabled:z.boolean()})
+]);
+export const workspaceActions=new Set(["personalStyle","shopStyle","bannerStyle","productVariants","assignRole","financeEntry","reviewReturn","setRate","deleteRate","requestAudit","remindAudit","submitAudit","approveAudit","rewardSettings","bonusRule","deleteBonusRule","manualBonus","notificationSettings","selfAudit","allocateStock","returnAudit"]);
+export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
+ const parsed=schema.safeParse(input);if(!parsed.success)throw new Error("Проверьте обязательные поля, суммы и формат изображений");
+ const a=parsed.data,s=initWorkspace(structuredClone(state)),w=s.workspace!,me=s.me;if(!me)throw new Error("Войдите в аккаунт");const admin=["owner","deputy"].includes(me.role),now=new Date().toISOString();
+ if(a.action==="personalStyle"){me.personal=a.value;syncProfile(s,me);return s;}
+ if(a.action==="selfAudit"){if(me.role!=="seller")throw new Error("Доступно продавцу");if(!w.audits.some(r=>r.id===a.id))w.audits.push({id:a.id,seller_id:me.id,note:"Ревизия по инициативе продавца",created_at:now,status:"pending",photo:"",items:[]});return s;}
+ if(a.action==="submitAudit"){
+ const r=w.audits.find(r=>r.id===a.id&&r.seller_id===me.id);if(me.role!=="seller"||!r)throw new Error("Ревизия не найдена");if(r.status!=="pending")throw new Error("Ревизия уже отправлена");
+ const own=(s.sellerStocks||[]).filter(p=>p.seller_id===me.id);if(a.items.length!==own.length||new Set(a.items.map(i=>i.productId)).size!==own.length)throw new Error("Заполните все товары без повторов");
+ r.items=a.items.map(i=>{const p=own.find(p=>p.productId===i.productId);if(!p||i.good+i.damaged>1000000)throw new Error("Некорректный пересчёт");return {...i,expected:p.quantity};});r.photo=a.photo;r.note+=(a.note?"\nКомментарий продавца: "+a.note:"");r.status="submitted";r.submitted_at=now;
+ for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,`Ревизия ${me.first_name} отправлена. Расхождение: ${r.items.reduce((n,i)=>n+i.good+i.damaged-i.expected,0)} шт.`,"audit-submit:"+r.id);return s;
+ }
+ if(!admin)throw new Error("Доступно владельцу и заместителю");
+ switch(a.action){
+ case "allocateStock":{const p=s.products.find(p=>p.id===a.productId);if(!p||!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Выберите товар и продавца");s.sellerStocks??=[];const others=s.sellerStocks.filter(r=>r.productId===p.id&&r.seller_id!==a.seller_id).reduce((n,r)=>n+r.quantity,0);if(others+a.quantity>p.stock)throw new Error("Недостаточно свободного товара на складе магазина");s.sellerStocks=s.sellerStocks.filter(r=>!(r.productId===p.id&&r.seller_id===a.seller_id)).concat({seller_id:a.seller_id,productId:p.id,quantity:a.quantity});break;}
+ case "shopStyle":s.settings.name=a.name;s.settings.description=a.description;w.logo=a.logo;w.background=a.background;w.accent=a.accent;w.glow=a.glow;break;
+ case "bannerStyle":if(!s.settings.banners.some(b=>b.id===a.id))throw new Error("Баннер не найден");w.bannerStyles[a.id]={accent:a.accent,imageOnly:a.imageOnly};break;
+ case "productVariants":{const p=s.products.find(p=>p.id===a.id);if(!p)throw new Error("Товар не найден");p.variants=[...new Set(a.variants)];break;}
+ case "assignRole":{const key=a.target.replace(/^@/,"").toLowerCase();let p=s.team.find(p=>p.id===key||p.username.toLowerCase()===key);if(p?.role==="owner")throw new Error("Нельзя изменить роль владельца");if(p?.role==="seller"&&s.orders.some(o=>o.seller_id===p!.id&&["claimed","delivering"].includes(o.status)))throw new Error("Сначала завершите заказы продавца");if(!p){if(!/^[1-9]\d{0,15}$/.test(key)&&!/^\w{5,32}$/.test(key))throw new Error("Укажите Telegram ID или username");p={id:/^\d+$/.test(key)?key:String(Date.now()),first_name:a.name||key,last_name:"",username:/^\d+$/.test(key)?"":key,photo_url:a.photo,role:a.role,theme:null,referred_by:null,balance:0,seller_balance:0};s.team.push(p);}p.role=a.role;if(a.name)p.first_name=a.name;if(a.role==="seller"){w.contacts[p.id]={phone:a.phone,vk:a.vk,address:a.address,photo:a.photo};if(a.photo)p.photo_url=a.photo;}syncProfile(s,p);notify(s,p.id,"Ваша роль изменена: "+a.role,"role:"+p.id+":"+now);break;}
+ case "financeEntry":{if(w.finance.some(e=>e.id===a.id))break;const p=s.team.find(p=>p.id===a.seller_id&&p.role==="seller");if(!p)throw new Error("Продавец не найден");if(a.order_event){const e=s.orderEvents?.find(e=>e.id===a.order_event&&e.type==="returned"&&e.seller_id===p.id);if(!e||w.reviewedEvents.includes(e.id))throw new Error("Возврат уже рассмотрен");w.reviewedEvents.push(e.id);}w.finance.push({...a,created_at:now,actor_id:me.id});p.seller_balance=(p.seller_balance||0)+(a.kind==="fine"?-a.amount:a.amount);syncProfile(s,p);notify(s,p.id,`${a.kind==="fine"?"Штраф":"Премия"}: ${a.amount/100} ₽. ${a.reason}`,"finance:"+a.id);break;}
+ case "reviewReturn":if(!s.orderEvents?.some(e=>e.id===a.event_id&&e.type==="returned"))throw new Error("Возврат не найден");if(!w.reviewedEvents.includes(a.event_id))w.reviewedEvents.push(a.event_id);break;
+ case "setRate":{if(a.scope==="product"?!s.products.some(p=>p.id===a.target_id):!s.categories.some(c=>c.id===a.target_id))throw new Error("Выберите товар или категорию");if(a.scope==="seller"&&!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Выберите продавца");w.rates=w.rates.filter(r=>!(r.scope===a.scope&&r.target_id===a.target_id&&r.seller_id===a.seller_id));w.rates.push({...a,id:crypto.randomUUID()});break;}
+ case "deleteRate":w.rates=w.rates.filter(r=>r.id!==a.id);break;
+ case "requestAudit":if(!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Продавец не найден");if(!w.audits.some(r=>r.id===a.id)){w.audits.push({id:a.id,seller_id:a.seller_id,note:a.note,created_at:now,status:"pending",photo:"",items:[]});notify(s,a.seller_id,"Завершите ревизию: пересчитайте товар, укажите брак и приложите чёткое фото всего товара. "+a.note,"audit:"+a.id);}break;
+ case "remindAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status!=="pending")throw new Error("Нет ожидающей ревизии");notify(s,r.seller_id,"Напоминание: завершите ревизию. "+a.note,"reminder:"+r.id+":"+now);break;}
+ case "returnAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status!=="submitted")throw new Error("Можно вернуть только отправленную ревизию");r.status="pending";r.items=[];r.photo="";r.note+="\nПовторный пересчёт: "+a.note;notify(s,r.seller_id,"Ревизия возвращена на пересчёт. "+a.note,"audit-return:"+r.id+":"+now);break;}
+ case "approveAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status==="pending")throw new Error("Продавец ещё не заполнил ревизию");if(r.status==="approved")break;for(const i of r.items){const stock=s.sellerStocks?.find(p=>p.productId===i.productId&&p.seller_id===r.seller_id);if(!stock||stock.quantity!==i.expected)throw new Error("Остатки изменились после отправки. Запросите новый пересчёт");const product=s.products.find(p=>p.id===i.productId);if(!product||product.stock+i.good-stock.quantity<0)throw new Error("Остатки магазина расходятся с учётом продавца");}for(const i of r.items){const stock=s.sellerStocks!.find(p=>p.productId===i.productId&&p.seller_id===r.seller_id)!,p=s.products.find(p=>p.id===i.productId);if(p)p.stock+=i.good-stock.quantity;stock.quantity=i.good;}r.status="approved";r.approved_at=now;notify(s,r.seller_id,"Ревизия согласована. Остатки обновлены, брак исключён из доступного товара.","audit-approve:"+r.id);break;}
+ case "rewardSettings":if(a.kind==="percent"&&a.value>100)throw new Error("Процент не больше 100");w.referral={kind:a.kind,value:a.value,limit:a.limit};s.settings.purchase_percent=a.purchase_percent;break;
+ case "bonusRule":if(a.kind==="percent"&&a.value>100)throw new Error("Процент не больше 100");for(const r of a.requirements){if(r.category_id&&!s.categories.some(c=>c.id===r.category_id))throw new Error("Категория не найдена");if(r.product_id&&!s.products.some(p=>p.id===r.product_id&&(!r.category_id||[p.category_id,s.categories.find(c=>c.id===p.category_id)?.parent_id].includes(r.category_id))))throw new Error("Товар не входит в категорию");}w.bonusRules=w.bonusRules.filter(r=>r.id!==a.id).concat(a);break;
+ case "deleteBonusRule":w.bonusRules=w.bonusRules.filter(r=>r.id!==a.id);break;
+ case "manualBonus":{const key=a.target.replace(/^@/,"").toLowerCase(),p=s.team.find(p=>p.id===key||p.username.toLowerCase()===key);if(!p||p.role!=="buyer")throw new Error("Покупатель не найден");manualBonus(s,p.id,a.amount,a.reason,"manual:"+a.id);break;}
+ case "notificationSettings":w.notifications=a.enabled;break;
+ }
+ return s;
+}

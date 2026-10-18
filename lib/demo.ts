@@ -1,3 +1,5 @@
+import {initWorkspace,expiry} from "./workspace";
+import {workspaceActions,workspaceMutation} from "./workspace-mutations";
 import {validateAttributes,validateMeasurements} from "./measurements";
 import {seedDemo} from "./demo-seed";
 import {sellerMutation} from "./seller-demo";
@@ -6,6 +8,9 @@ import {actionSchema} from "./validation";
 import {defaultSettings,type Snapshot} from "./types";
 export function blankPreview():Snapshot{return {settings:structuredClone(defaultSettings),products:[],categories:[],me:{id:"998579758",first_name:"Владелец",last_name:"",username:"",photo_url:"",role:"owner",theme:null,referred_by:null,balance:0},orders:[],ledger:[],referrals:0,team:[],stats:{visitors:0,orders:0,paid:0,revenue:0},configured:true};}
 export function previewMutation(state:Snapshot,input:unknown):Snapshot{
+ state=expiry(structuredClone(state));
+ if(input&&typeof input==="object"&&"action" in input&&input.action==="refreshDemo")return state;
+ if(input&&typeof input==="object"&&"action" in input&&workspaceActions.has(String(input.action)))return workspaceMutation(state,input);
  if(input&&typeof input==="object"&&"action" in input&&["claimOrder","returnOrder","acceptOrder","deliverOrder","inventoryReview","stockReceipt","demoOrder"].includes(String(input.action)))return sellerMutation(state,input);
  const a=actionSchema.parse(input),s=withPreviewProfiles(structuredClone(state));
  if(!s.me)throw new Error("Выберите аккаунт");
@@ -44,4 +49,4 @@ export function withPreviewProfiles(s:Snapshot):Snapshot{
 }
 export function switchPreviewProfile(state:Snapshot,id:string):Snapshot{const s=withPreviewProfiles(structuredClone(state));if(s.me)s.team=s.team.map(p=>p.id===s.me!.id?structuredClone(s.me!):p);const next=s.team.find(p=>p.id===id);if(!next)throw new Error("Аккаунт не найден");s.me=structuredClone(next);return s;}
 
-export function prepareDemo(s:Snapshot):Snapshot{return seedDemo(withPreviewProfiles(s));}
+export function prepareDemo(s:Snapshot):Snapshot{return expiry(initWorkspace(seedDemo(withPreviewProfiles(s))));}
