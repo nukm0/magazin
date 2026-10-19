@@ -1,7 +1,6 @@
 import {initWorkspace,expiry} from "./workspace";
 import {workspaceActions,workspaceMutation} from "./workspace-mutations";
-import {validateAttributes,validateMeasurements} from "./measurements";
-import {seedDemo} from "./demo-seed";
+import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
 import {sellerMutation} from "./seller-demo";
 import {publicCatalog} from "./catalog";
 import {actionSchema} from "./validation";
@@ -18,15 +17,17 @@ export function previewMutation(state:Snapshot,input:unknown):Snapshot{
  if(!["theme","order"].includes(a.action)&&s.me.role==="buyer")throw new Error("У покупателя нет доступа к управлению магазином");
  if(s.me.role==="seller"&&a.action!=="theme")throw new Error("Продавцу доступны учёт товаров и работа с заказами");
  switch(a.action){
+ case "characteristic":s.characteristics=saveCharacteristic(s.characteristics||[],a);break;
+ case "deleteCharacteristic":s.characteristics=removeCharacteristic(s.characteristics||[],a.key,s.products);break;
  case "image":break;
  case "settings":s.settings=a.value;break;
  case "theme":if(s.me)s.me.theme=a.theme;break;
- case "product":{a.attributes=validateAttributes(s.categories,a.category_id,a.attributes);const old=s.products.find(p=>p.id===a.id);const p={...a,id:a.id||crypto.randomUUID(),seller_id:old?.seller_id||s.me.id,sku:old?.sku||"SKU-"+crypto.randomUUID().slice(0,8).toUpperCase()};s.products=s.products.filter(x=>x.id!==p.id).concat(p);break;}
+ case "product":{a.attributes=validateAttributes(s.categories,a.category_id,a.attributes,s.characteristics||[]);const old=s.products.find(p=>p.id===a.id);const p={...a,id:a.id||crypto.randomUUID(),seller_id:old?.seller_id||s.me.id,sku:old?.sku||"SKU-"+crypto.randomUUID().slice(0,8).toUpperCase()};s.products=s.products.filter(x=>x.id!==p.id).concat(p);break;}
  case "deleteProduct":s.products=s.products.map(p=>p.id===a.id?{...p,active:false}:p);break;
  case "category":{
  if(a.parent_id && (a.parent_id===a.id || s.categories.find(c=>c.id===a.parent_id)?.parent_id))throw new Error("Выберите главную категорию");
  if(a.parent_id && a.id && s.categories.some(c=>c.parent_id===a.id))throw new Error("Сначала перенесите подкатегории");
- const c={id:a.id||crypto.randomUUID(),name:a.name,parent_id:a.parent_id,measurements:validateMeasurements(a.measurements??s.categories.find(c=>c.id===a.id)?.measurements??[])};s.categories=s.categories.filter(x=>x.id!==c.id).concat(c);break;
+ const c={id:a.id||crypto.randomUUID(),name:a.name,parent_id:a.parent_id,image_url:a.image_url??s.categories.find(c=>c.id===a.id)?.image_url??"",measurements:validateMeasurements(a.measurements??s.categories.find(c=>c.id===a.id)?.measurements??[])};s.categories=s.categories.filter(x=>x.id!==c.id).concat(c);break;
  }
  case "deleteCategory":if(s.categories.some(c=>c.parent_id===a.id)||s.products.some(p=>p.category_id===a.id))throw new Error("Категория используется");s.categories=s.categories.filter(c=>c.id!==a.id);break;
  case "transferOwner":{const target=s.team.find(p=>p.id===a.id);if(!target)throw new Error("Пользователь не найден в предпросмотре");if(target.id===s.me.id)break;for(const p of s.team)if(p.role==="owner")p.role="buyer";target.role="owner";s.me.role="buyer";break;}
@@ -49,4 +50,8 @@ export function withPreviewProfiles(s:Snapshot):Snapshot{
 }
 export function switchPreviewProfile(state:Snapshot,id:string):Snapshot{const s=withPreviewProfiles(structuredClone(state));if(s.me)s.team=s.team.map(p=>p.id===s.me!.id?structuredClone(s.me!):p);const next=s.team.find(p=>p.id===id);if(!next)throw new Error("Аккаунт не найден");s.me=structuredClone(next);return s;}
 
-export function prepareDemo(s:Snapshot):Snapshot{return expiry(initWorkspace(seedDemo(withPreviewProfiles(s))));}
+export function prepareDemo(s:Snapshot):Snapshot{
+ s=initWorkspace(withPreviewProfiles(s));
+ if((s.catalogRevision||0)<3){s.products=[];s.categories=[];s.characteristics=[];s.orders=[];s.sellerStocks=[];s.orderEvents=[];s.sellerEarnings=[];s.inventoryReviews=[];s.dailyVisits=[];s.stats={visitors:0,orders:0,paid:0,revenue:0};const w=s.workspace!;w.audits=[];w.rates=[];w.complaints=[];w.reviewedEvents=[];w.bonusRules=[];w.notices=w.notices.filter(n=>!(/^(new-|claimed:|returned-|accepted:|delivered-|expired:|audit|complaint|cashback:|rule:)/.test(n.source)));for(const p of s.team)if(p.role==="seller")p.seller_balance=w.finance.filter(f=>f.seller_id===p.id).reduce((n,f)=>n+(f.kind==="fine"?-f.amount:f.amount),0);if(s.me?.role==="seller")s.me.seller_balance=s.team.find(p=>p.id===s.me!.id)?.seller_balance||0;s.demoVersion=2;s.catalogRevision=3;}
+ s.characteristics??=[];return expiry(s);
+}

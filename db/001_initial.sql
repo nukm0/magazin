@@ -31,4 +31,6 @@ ALTER TABLE categories ADD COLUMN IF NOT EXISTS measurements jsonb NOT NULL DEFA
 ALTER TABLE products ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}'::jsonb;
 CREATE TABLE IF NOT EXISTS bot_starts(user_id text PRIMARY KEY,referred_by text REFERENCES profiles(id),created_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS comment text NOT NULL DEFAULT '';
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS image_url text NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS characteristic_definitions(key text PRIMARY KEY,label text NOT NULL,unit text NOT NULL DEFAULT '');
 COMMIT;

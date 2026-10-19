@@ -1,8 +1,9 @@
+import {seededFixture} from "./demo-fixture";
 import {test} from "node:test";import assert from "node:assert/strict";
 import {prepareDemo,catalogPreview,switchPreviewProfile,previewMutation} from "../lib/demo";
 import {expiry,payout} from "../lib/workspace";import {report} from "../lib/reports";
 const owner="998579758",seller="100000003",buyer="100000001";
-const setup=()=>prepareDemo(catalogPreview());
+const setup=seededFixture;
 const mutate=previewMutation;
 const photo="data:image/png;base64,iVBORw0KGgo=";
 test("Personal appearance is private per profile and does not change shop settings",()=>{let s=setup();const old=s.settings.theme;s=mutate(s,{action:"personalStyle",value:{background:"red",glow:"blue",text:"black",image:""}});assert.equal(s.me?.personal?.background,"red");s=switchPreviewProfile(s,buyer);assert.equal(s.me?.personal,undefined);assert.equal(s.settings.theme,old);s=switchPreviewProfile(s,owner);assert.equal(s.me?.personal?.text,"black");});

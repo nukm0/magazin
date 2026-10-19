@@ -1,7 +1,8 @@
+import {seededFixture} from "./demo-fixture";
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {catalogPreview,prepareDemo,switchPreviewProfile,previewMutation} from "../lib/demo";
-const setup=()=>prepareDemo(catalogPreview());
+const setup=seededFixture;
 const open=(s:ReturnType<typeof setup>)=>s.orders.find(o=>o.status==="open")!;
 test("Claim, return with reason, reassign, deliver and credit exactly once",()=>{
  let s=setup();const orderId=open(s).id;

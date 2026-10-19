@@ -1,4 +1,4 @@
-import {validateAttributes,validateMeasurements} from "./measurements";
+import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
 import {publicCatalog} from "./catalog";
 import type {PoolClient} from "pg";
 import {database,transaction} from "./db";
@@ -31,7 +31,7 @@ export async function snapshot(request:Request):Promise<Snapshot> {
  if(!process.env.DATABASE_URL)return {settings:publicCatalog.settings,categories:publicCatalog.categories,products:publicCatalog.products,me:null,orders:[],ledger:[],referrals:0,team:[],stats:{visitors:0,orders:0,paid:0,revenue:0},configured:false};
  const me=await actor(request), admin=!!me && me.role!=="buyer";
  const db=database();
- const [s,c,p,o,b,r,t,stats]=await Promise.all([
+ const [s,c,p,o,b,r,t,stats,definitions]=await Promise.all([
  db.query("SELECT data FROM settings WHERE id=1"),
  db.query("SELECT * FROM categories ORDER BY name"),
  db.query("SELECT * FROM products WHERE active OR $1 ORDER BY created_at DESC",[admin]),
@@ -39,10 +39,11 @@ export async function snapshot(request:Request):Promise<Snapshot> {
  me?db.query("SELECT * FROM bonus_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100",[me.id]):null,
  me?db.query("SELECT count(*)::int AS count FROM (SELECT id FROM profiles WHERE referred_by=$1 UNION SELECT user_id FROM bot_starts WHERE referred_by=$1) referrals",[me.id]):null,
  admin?db.query("SELECT id,first_name,last_name,username,photo_url,CASE WHEN id=(SELECT owner_id FROM ownership WHERE id=1) THEN 'owner' ELSE role END AS role,theme,referred_by FROM profiles WHERE role='deputy' OR id=(SELECT owner_id FROM ownership WHERE id=1)",[]):null,
- admin?db.query(`SELECT (SELECT count(*)::int FROM profiles) AS visitors,count(*)::int AS orders,count(*) FILTER(WHERE status IN ('paid','shipped','completed'))::int AS paid,COALESCE(sum(total) FILTER(WHERE status IN ('paid','shipped','completed')),0)::float8 AS revenue FROM orders`):null
+ admin?db.query(`SELECT (SELECT count(*)::int FROM profiles) AS visitors,count(*)::int AS orders,count(*) FILTER(WHERE status IN ('paid','shipped','completed'))::int AS paid,COALESCE(sum(total) FILTER(WHERE status IN ('paid','shipped','completed')),0)::float8 AS revenue FROM orders`):null,
+ db.query("SELECT key,label,unit FROM characteristic_definitions ORDER BY label")
  ]);
  if(me)me.balance=Number((await db.query("SELECT COALESCE(sum(amount),0)::float8 AS balance FROM bonus_ledger WHERE user_id=$1",[me.id])).rows[0].balance);
- return {settings:s.rows[0]?.data||defaultSettings,categories:c.rows,products:p.rows,me,orders:o?.rows||[],ledger:b?.rows||[],referrals:r?.rows[0].count||0,team:t?.rows||[],stats:stats?.rows[0]||{visitors:0,orders:0,paid:0,revenue:0},configured:true};
+ return {settings:s.rows[0]?.data||defaultSettings,characteristics:definitions.rows,categories:c.rows,products:p.rows,me,orders:o?.rows||[],ledger:b?.rows||[],referrals:r?.rows[0].count||0,team:t?.rows||[],stats:stats?.rows[0]||{visitors:0,orders:0,paid:0,revenue:0},configured:true};
 }
 async function savePicture(c:PoolClient,value:string){
  if(!value.startsWith("data:"))return value;
@@ -74,19 +75,22 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    await c.query("UPDATE profiles SET role='buyer' WHERE id=ANY($1::text[])",[[me.id,a.id]]);
   }
   if(a.action==="settings")await c.query("UPDATE settings SET data=$1 WHERE id=1",[JSON.stringify({...a.value,banners:await Promise.all(a.value.banners.map(async b=>({...b,image_url:await savePicture(c,b.image_url)})))})]);
+  if(a.action==="characteristic"){const registry=(await c.query("SELECT key,label,unit FROM characteristic_definitions FOR UPDATE")).rows;saveCharacteristic(registry,a);await c.query("INSERT INTO characteristic_definitions(key,label,unit) VALUES($1,$2,$3) ON CONFLICT(key) DO UPDATE SET label=$2,unit=$3",[a.key,a.label,a.unit]);}
+  if(a.action==="deleteCharacteristic"){const products=(await c.query("SELECT * FROM products WHERE active FOR UPDATE")).rows;removeCharacteristic([],a.key,products);await c.query("DELETE FROM characteristic_definitions WHERE key=$1",[a.key]);}
   if(a.action==="category"){
    if(a.parent_id){
     const parent=(await c.query("SELECT * FROM categories WHERE id=$1 FOR UPDATE",[a.parent_id])).rows[0];
     if(!parent || parent.parent_id || a.id===a.parent_id)throw new ApiError(400,"Выберите главную категорию");
     if(a.id && (await c.query("SELECT 1 FROM categories WHERE parent_id=$1 LIMIT 1",[a.id])).rowCount)throw new ApiError(400,"Сначала перенесите подкатегории");
    }
-   if(a.id)await c.query("UPDATE categories SET name=$1,parent_id=$2,measurements=COALESCE($4::jsonb,measurements) WHERE id=$3",[a.name,a.parent_id,a.id,a.measurements?JSON.stringify(validateMeasurements(a.measurements)):null]);
-   else await c.query("INSERT INTO categories(name,parent_id,measurements) VALUES($1,$2,$3)",[a.name,a.parent_id,JSON.stringify(validateMeasurements(a.measurements??[]))]);
+   if(a.id)await c.query("UPDATE categories SET name=$1,parent_id=$2,measurements=COALESCE($4::jsonb,measurements),image_url=COALESCE($5,image_url) WHERE id=$3",[a.name,a.parent_id,a.id,a.measurements?JSON.stringify(validateMeasurements(a.measurements)):null,a.image_url===undefined?null:await savePicture(c,a.image_url)]);
+   else await c.query("INSERT INTO categories(name,parent_id,measurements,image_url) VALUES($1,$2,$3,$4)",[a.name,a.parent_id,JSON.stringify(validateMeasurements(a.measurements??[])),await savePicture(c,a.image_url||"")]);
   }
   if(a.action==="deleteCategory")await c.query("DELETE FROM categories WHERE id=$1",[a.id]);
   if(a.action==="product"){
    const categories=(await c.query("SELECT * FROM categories")).rows;
-   const attributes=validateAttributes(categories,a.category_id,a.attributes);
+   const registry=(await c.query("SELECT key,label,unit FROM characteristic_definitions")).rows;
+   const attributes=validateAttributes(categories,a.category_id,a.attributes,registry);
    const args=[a.title,a.description,a.price,a.stock,a.category_id,await savePicture(c,a.image_url),a.active];
    if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7,attributes=$9 WHERE id=$8",[...args,a.id,JSON.stringify(attributes)]);
    else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active,attributes) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[...args,JSON.stringify(attributes)]);

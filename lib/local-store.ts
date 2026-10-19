@@ -1,16 +1,16 @@
-import {validateAttributes,validateMeasurements} from "./measurements";
+import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
 import {DatabaseSync} from "node:sqlite";
 import {mkdirSync} from "node:fs";
 import {dirname,resolve} from "node:path";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {actionSchema} from "./validation";
-import {defaultSettings,type Snapshot,type Profile,type Order,type Product} from "./types";
+import {defaultSettings,type Snapshot,type Profile,type Order,type Product,type Measurement} from "./types";
 import {localIdentities,isLocalRequest,assertLocalOrigin} from "./local-mode";
 
 type Entry={order_id?:string;id:string;user_id:string;source:string;amount:number;reason:string;created_at:string};
 type LocalOrder=Order & {bonus_spent:number;subtotal:number;purchase_bonus:number;referral_bonus:number};
-type State={settings:Snapshot["settings"];ownerId:string;profiles:Record<string,Profile>;categories:Snapshot["categories"];products:Product[];orders:LocalOrder[];ledger:Entry[];media:Record<string,string>};
+type State={characteristics?:Measurement[];settings:Snapshot["settings"];ownerId:string;profiles:Record<string,Profile>;categories:Snapshot["categories"];products:Product[];orders:LocalOrder[];ledger:Entry[];media:Record<string,string>};
 const initial=():State=>({settings:structuredClone(defaultSettings),ownerId:"998579758",profiles:{},categories:[],products:[],orders:[],ledger:[],media:{}});
 const localPayment=z.object({action:z.enum(["localPayment","localRefund"]),id:z.string().uuid()});
 export class LocalError extends Error {constructor(public status:number,message:string){super(message);}}
@@ -46,7 +46,7 @@ export class LocalStore {
  snapshot(id:string,referrer?:string):Snapshot{
   return this.change(state=>{
    const me=this.profile(state,id,referrer),admin=me.role!=="buyer";
-   return {local:true,configured:true,settings:state.settings,categories:state.categories,products:state.products.filter(p=>p.active||admin),me,
+   return {local:true,configured:true,settings:state.settings,characteristics:state.characteristics||[],categories:state.categories,products:state.products.filter(p=>p.active||admin),me,
     orders:state.orders.filter(o=>admin||o.user_id===id).slice(-100).reverse(),
     ledger:state.ledger.filter(e=>e.user_id===id).slice(-100).reverse(),referrals:Object.values(state.profiles).filter(p=>p.referred_by===id).length,
     team:admin?Object.values(state.profiles).filter(p=>p.id===state.ownerId||p.role==="deputy").map(p=>this.profile(state,p.id)):[],
@@ -91,16 +91,18 @@ export class LocalStore {
     case "image":return {ok:true,url:this.image(state,a.data)};
     case "theme":state.profiles[id].theme=a.theme;break;
     case "settings":state.settings={...a.value,banners:a.value.banners.map(b=>({...b,image_url:this.image(state,b.image_url)}))};break;
+    case "characteristic":state.characteristics=saveCharacteristic(state.characteristics||[],a);break;
+    case "deleteCharacteristic":state.characteristics=removeCharacteristic(state.characteristics||[],a.key,state.products);break;
     case "category":{
      if(a.parent_id){const parent=state.categories.find(c=>c.id===a.parent_id);if(!parent||parent.parent_id||a.id===a.parent_id)throw new LocalError(400,"Выберите главную категорию");if(a.id&&state.categories.some(c=>c.parent_id===a.id))throw new LocalError(400,"Сначала перенесите подкатегории");}
      const existing=a.id?state.categories.find(c=>c.id===a.id):null;
      if(a.id&&!existing)throw new LocalError(404,"Категория не найдена");
-     if(existing)Object.assign(existing,{name:a.name,parent_id:a.parent_id,measurements:validateMeasurements(a.measurements??existing.measurements??[])});else state.categories.push({id:randomUUID(),name:a.name,parent_id:a.parent_id,measurements:validateMeasurements(a.measurements??[])});break;
+     if(existing)Object.assign(existing,{name:a.name,parent_id:a.parent_id,image_url:a.image_url===undefined?existing?.image_url||"":this.image(state,a.image_url),measurements:validateMeasurements(a.measurements??existing.measurements??[])});else state.categories.push({id:randomUUID(),name:a.name,parent_id:a.parent_id,image_url:this.image(state,a.image_url||""),measurements:validateMeasurements(a.measurements??[])});break;
     }
     case "deleteCategory":if(state.categories.some(c=>c.parent_id===a.id)||state.products.some(p=>p.category_id===a.id))throw new LocalError(409,"Сначала перенесите товары и подкатегории");state.categories=state.categories.filter(c=>c.id!==a.id);break;
     case "product":{
      if(a.category_id&&!state.categories.some(c=>c.id===a.category_id))throw new LocalError(400,"Категория не найдена");
-     const p={attributes:validateAttributes(state.categories,a.category_id,a.attributes),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,stock:a.stock,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
+     const p={attributes:validateAttributes(state.categories,a.category_id,a.attributes,state.characteristics||[]),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,stock:a.stock,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
      const index=state.products.findIndex(x=>x.id===a.id);
      if(a.id&&index<0)throw new LocalError(404,"Товар не найден");
      if(index>=0)state.products[index]=p;else state.products.push(p);break;
