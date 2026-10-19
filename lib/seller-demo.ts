@@ -1,3 +1,4 @@
+import {availableStock,changeSellerStock,reservedStock} from "./transfers";
 import {assertLineStock,takeStock,lineTotals} from "./variants";
 import {initWorkspace,payout,notify,rewardOrder} from "./workspace";
 import {telegramContact} from "./validation";
@@ -38,7 +39,7 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  if(a.action==="returnOrder"){if(o.status!=="claimed")throw new Error("Вернуть можно заказ до принятия в доставку");o.status="open";o.seller_id=null;event("returned",a.reason);notify(s,o.user_id,"Заказ возвращён в общую очередь. Ищем другого продавца.","returned-buyer:"+o.id+":"+created_at);for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,"Продавец @"+me.username+" вернул заказ #"+o.id.slice(-8)+". Причина: "+a.reason,"returned-admin:"+o.id+":"+created_at);}
  else if(a.action==="acceptOrder"){
  if(o.status!=="claimed")throw new Error("Сначала возьмите заказ и свяжитесь с покупателем");
- assertLineStock(s.products,o.items);for(const [id,q] of lineTotals(o.items)){if(get(id).stock.quantity<q)throw new Error("На складе продавца недостаточно товара");}takeStock(s.products,o.items);for(const [id,q] of lineTotals(o.items))get(id).stock.quantity-=q;
+ assertLineStock(s.products,o.items);for(const i of o.items){if(i.variant&&availableStock(s,me.id,i.productId,i.variant)<i.quantity)throw new Error("Недостаточно выбранного варианта у продавца");}for(const [id,q] of lineTotals(o.items)){if(availableStock(s,me.id,id)<q)throw new Error("На складе продавца недостаточно товара");}takeStock(s.products,o.items);for(const i of o.items)changeSellerStock(s,me.id,i.productId,i.variant,-i.quantity);
  o.payout_quote=payout(s,o,me.id);o.status="delivering";event("accepted");notify(s,o.user_id,"Ваш заказ принят в доставку. Продавец: @"+me.username,"accepted:"+o.id);
  }else{
  if(o.status==="completed"&&s.sellerEarnings.some(e=>e.order_id===o.id))return s;
@@ -57,7 +58,7 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  }else if(a.action==="inventoryReview"){
  if(s.inventoryReviews.some(r=>r.id===a.id))return s;
  if(new Set(a.items.map(i=>i.productId)).size!==a.items.length||a.items.length!==own.length)throw new Error("Пересчитайте все свои товары без повторов");
- const items=a.items.map(i=>{const {stock,product}=get(i.productId);if(stock.quantity!==i.expected)throw new Error("Остатки изменились. Начните ревизию заново");if(product.variant_stocks?.length&&i.actual!==i.expected)throw new Error("Уточните остатки вариантов в объявлении");return {...i,title:product.title,difference:i.actual-i.expected};});
+ const items=a.items.map(i=>{const {stock,product}=get(i.productId);if(reservedStock(s,me.id,i.productId)&&i.actual!==i.expected)throw new Error("Завершите перемещение перед изменением остатков");if(stock.quantity!==i.expected)throw new Error("Остатки изменились. Начните ревизию заново");if(product.variant_stocks?.length&&i.actual!==i.expected)throw new Error("Уточните остатки вариантов в объявлении");return {...i,title:product.title,difference:i.actual-i.expected};});
  for(const i of items){const {stock,product}=get(i.productId);stock.quantity=i.actual;product.stock+=i.difference;}
  s.inventoryReviews.push({id:a.id,created_at,seller_id:me.id,note:a.note,items});
  }
