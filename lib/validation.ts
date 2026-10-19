@@ -15,12 +15,12 @@ export const actionSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("deleteCategory"),id:uuid}),
  z.object({action:z.literal("characteristic"),key:z.string().regex(/^custom_[0-9a-f-]{36}$/),label:text(60),unit:z.string().trim().max(20)}),
  z.object({action:z.literal("deleteCharacteristic"),key:z.string().regex(/^custom_[0-9a-f-]{36}$/)}),
- z.object({action:z.literal("product"),id:uuid.optional(),title:text(150),description:z.string().max(5000),price:z.number().int().min(100).max(100000000),stock:z.number().int().min(0).max(1000000),category_id:uuid.nullable(),image_url:picture,active:z.boolean(),attributes:z.partialRecord(field,z.string().trim().max(80)).optional(),delivery_price:z.number().int().min(0).max(10000000).optional(),show_delivery:z.boolean().optional()}),
+ z.object({action:z.literal("product"),id:uuid.optional(),title:text(150),description:z.string().max(5000),price:z.number().int().min(100).max(100000000),stock:z.number().int().min(0).max(1000000),category_id:uuid.nullable(),image_url:picture,active:z.boolean(),variant_label:z.string().trim().max(60).optional(),variant_stocks:z.array(z.object({name:text(80),stock:z.number().int().min(0).max(1000000)})).max(30).optional(),attributes:z.partialRecord(field,z.string().trim().max(80)).optional(),delivery_price:z.number().int().min(0).max(10000000).optional(),show_delivery:z.boolean().optional()}),
  z.object({action:z.literal("deleteProduct"),id:uuid}),
  z.object({action:z.literal("theme"),theme:theme.nullable()}),
  z.object({action:z.literal("transferOwner"),id:z.string().regex(/^[1-9]\d{0,15}$/)}),
  z.object({action:z.literal("deputy"),id:z.string().regex(/^[1-9]\d{0,15}$/),enabled:z.boolean()}),
- z.object({action:z.literal("order"),idempotency_key:uuid,items:z.array(z.object({productId:uuid,quantity:z.number().int().min(1).max(99)})).min(1).max(50),contact:telegramContact,address:text(1000),comment:z.string().trim().max(1000).optional()}),
+ z.object({action:z.literal("order"),idempotency_key:uuid,items:z.array(z.object({productId:uuid,quantity:z.number().int().min(1).max(99),variant:z.string().trim().max(80).optional()})).min(1).max(50),contact:telegramContact,address:text(1000),comment:z.string().trim().max(1000).optional()}),
  z.object({action:z.literal("orderStatus"),id:uuid,status:z.enum(["cancelled","shipped","completed"])})
 ]);
 export function rublesToKopecks(input:string) {

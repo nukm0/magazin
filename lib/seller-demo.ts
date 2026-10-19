@@ -1,3 +1,4 @@
+import {assertLineStock,takeStock,lineTotals} from "./variants";
 import {initWorkspace,payout,notify,rewardOrder} from "./workspace";
 import {telegramContact} from "./validation";
 import {cartQuote} from "./pricing";
@@ -19,7 +20,7 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  const created_at=new Date().toISOString();s.inventoryReviews??=[];s.orderEvents??=[];s.sellerEarnings??=[];s.sellerStocks??=[];
  if(a.action==="demoOrder"){
  if(me.role!=="buyer")throw new Error("Заказ создаёт только покупатель");if(s.orders.some(o=>o.id===a.id))return s;
- if(new Set(a.items.map(i=>i.productId)).size!==a.items.length)throw new Error("Повтор товара");
+ assertLineStock(s.products,a.items);
  const items=a.items.map(i=>{const p=s.products.find(p=>p.id===i.productId&&p.active);if(!p||p.stock<i.quantity)throw new Error("Недостаточно товара");if(p.variants?.length&&(!i.variant||!p.variants.includes(i.variant)))throw new Error("Выберите вариант товара");return {...i,title:p.title,price:p.price};});
  const spend=a.spend_bonus||0;const subtotal=items.reduce((n,i)=>n+i.price*i.quantity,0);if(spend>me.balance||spend*100>subtotal)throw new Error("Недостаточно бонусов или превышена стоимость товаров");if(spend){me.balance-=spend;s.team=s.team.map(p=>p.id===me.id?structuredClone(me):p);s.workspace!.bonuses.push({id:crypto.randomUUID(),user_id:me.id,amount:-spend,reason:"Списание бонусов при заказе",source:"spend:"+a.id,created_at});}
  const quote=cartQuote(items.map(i=>({product:s.products.find(p=>p.id===i.productId)!,quantity:i.quantity})));const delivery_fee=quote.delivery;
@@ -37,8 +38,7 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  if(a.action==="returnOrder"){if(o.status!=="claimed")throw new Error("Вернуть можно заказ до принятия в доставку");o.status="open";o.seller_id=null;event("returned",a.reason);notify(s,o.user_id,"Заказ возвращён в общую очередь. Ищем другого продавца.","returned-buyer:"+o.id+":"+created_at);for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,"Продавец @"+me.username+" вернул заказ #"+o.id.slice(-8)+". Причина: "+a.reason,"returned-admin:"+o.id+":"+created_at);}
  else if(a.action==="acceptOrder"){
  if(o.status!=="claimed")throw new Error("Сначала возьмите заказ и свяжитесь с покупателем");
- for(const i of o.items){const {stock,product}=get(i.productId);if(stock.quantity<i.quantity||product.stock<i.quantity)throw new Error("На вашем складе недостаточно товара. Пополните склад или верните заказ с причиной");}
- for(const i of o.items){const {stock,product}=get(i.productId);stock.quantity-=i.quantity;product.stock-=i.quantity;}
+ assertLineStock(s.products,o.items);for(const [id,q] of lineTotals(o.items)){if(get(id).stock.quantity<q)throw new Error("На складе продавца недостаточно товара");}takeStock(s.products,o.items);for(const [id,q] of lineTotals(o.items))get(id).stock.quantity-=q;
  o.payout_quote=payout(s,o,me.id);o.status="delivering";event("accepted");notify(s,o.user_id,"Ваш заказ принят в доставку. Продавец: @"+me.username,"accepted:"+o.id);
  }else{
  if(o.status==="completed"&&s.sellerEarnings.some(e=>e.order_id===o.id))return s;
@@ -52,12 +52,12 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  }
  if(a.action==="stockReceipt"){
  if(s.inventoryReviews.some(r=>r.id===a.id))return s;
- const {stock,product}=get(a.productId);if(stock.quantity+a.quantity>1000000||product.stock+a.quantity>1000000)throw new Error("Превышен максимальный остаток");
+ const {stock,product}=get(a.productId);if(product.variant_stocks?.length)throw new Error("Измените остатки вариантов в объявлении");if(stock.quantity+a.quantity>1000000||product.stock+a.quantity>1000000)throw new Error("Превышен максимальный остаток");
  s.inventoryReviews.push({id:a.id,created_at,seller_id:me.id,note:"Поступление: "+a.note,items:[{productId:product.id,title:product.title,expected:stock.quantity,actual:stock.quantity+a.quantity,difference:a.quantity}]});stock.quantity+=a.quantity;product.stock+=a.quantity;
  }else if(a.action==="inventoryReview"){
  if(s.inventoryReviews.some(r=>r.id===a.id))return s;
  if(new Set(a.items.map(i=>i.productId)).size!==a.items.length||a.items.length!==own.length)throw new Error("Пересчитайте все свои товары без повторов");
- const items=a.items.map(i=>{const {stock,product}=get(i.productId);if(stock.quantity!==i.expected)throw new Error("Остатки изменились. Начните ревизию заново");return {...i,title:product.title,difference:i.actual-i.expected};});
+ const items=a.items.map(i=>{const {stock,product}=get(i.productId);if(stock.quantity!==i.expected)throw new Error("Остатки изменились. Начните ревизию заново");if(product.variant_stocks?.length&&i.actual!==i.expected)throw new Error("Уточните остатки вариантов в объявлении");return {...i,title:product.title,difference:i.actual-i.expected};});
  for(const i of items){const {stock,product}=get(i.productId);stock.quantity=i.actual;product.stock+=i.difference;}
  s.inventoryReviews.push({id:a.id,created_at,seller_id:me.id,note:a.note,items});
  }

@@ -34,3 +34,5 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS comment text NOT NULL DEFAULT '';
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS image_url text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS characteristic_definitions(key text PRIMARY KEY,label text NOT NULL,unit text NOT NULL DEFAULT '');
 COMMIT;
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS variant_stocks jsonb NOT NULL DEFAULT '[]', ADD COLUMN IF NOT EXISTS variant_label text NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS variants jsonb NOT NULL DEFAULT '[]';

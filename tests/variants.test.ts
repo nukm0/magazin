@@ -1,0 +1,6 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {variantPatch,availableVariants,assertLineStock,takeStock,restoreStock,cartLineKey,parseCartLine} from "../lib/variants";
+import {seededFixture} from "./demo-fixture";
+test("separate variant stock, depletion, refund and cart identity",()=>{const p=seededFixture().products[0];Object.assign(p,variantPatch({stock:999,variant_label:"Вкус",variant_stocks:[{name:"Вишня",stock:10},{name:"Яблоко",stock:40}]}));assert.equal(p.stock,50);const lines=[{productId:p.id,quantity:10,variant:"Вишня"},{productId:p.id,quantity:2,variant:"Яблоко"}];assertLineStock([p],lines);takeStock([p],lines);assert.equal(p.stock,38);assert.deepEqual(availableVariants(p),["Яблоко"]);assert.throws(()=>assertLineStock([p],[lines[0]]),/Данный товар закончился/);restoreStock(p,lines[0]);assert.equal(p.stock,48);assert.deepEqual(parseCartLine(cartLineKey(p.id,"Вишня")),{productId:p.id,variant:"Вишня"});assert.notEqual(cartLineKey(p.id,"Вишня"),cartLineKey(p.id,"Яблоко"));});
+test("variant validation rejects duplicate names and negative stock",()=>{assert.throws(()=>variantPatch({stock:0,variant_stocks:[{name:"A",stock:1},{name:"a",stock:2}]}));assert.throws(()=>variantPatch({stock:0,variant_stocks:[{name:"A",stock:-1}]}));});

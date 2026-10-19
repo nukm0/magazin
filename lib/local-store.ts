@@ -1,3 +1,4 @@
+import {variantPatch,assertLineStock,takeStock,restoreStock} from "./variants";
 import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
 import {DatabaseSync} from "node:sqlite";
 import {mkdirSync} from "node:fs";
@@ -66,8 +67,7 @@ export class LocalStore {
      if(["paid","shipped","completed"].includes(o.status))return {ok:true};
      if(o.status!=="pending")throw new LocalError(409,"Этот заказ нельзя оплатить");
      if(this.balance(state,o.user_id)<o.bonus_spent)throw new LocalError(409,"Бонусов для оплаты уже недостаточно");
-     for(const item of o.items){const p=state.products.find(p=>p.id===item.productId);if(!p||!p.active||p.stock<item.quantity)throw new LocalError(409,"Товар недоступен или закончился");}
-     for(const item of o.items)state.products.find(p=>p.id===item.productId)!.stock-=item.quantity;
+     takeStock(state.products,o.items);
      o.status="paid";
      this.credit(state,o.user_id,-o.bonus_spent,"Списание за тестовую покупку","spend:"+o.id);
      this.credit(state,o.user_id,o.purchase_bonus,"Бонусы за тестовую покупку","purchase:"+o.id);
@@ -77,7 +77,7 @@ export class LocalStore {
      if(!admin)throw new LocalError(403,"Тестовый возврат выполняет владелец или заместитель");
      if(o.status==="refunded")return {ok:true};
      if(!["paid","shipped","completed"].includes(o.status))throw new LocalError(409,"Заказ не оплачен");
-     for(const item of o.items){const p=state.products.find(p=>p.id===item.productId);if(p)p.stock+=item.quantity;}
+     for(const item of o.items){const p=state.products.find(p=>p.id===item.productId);if(p)restoreStock(p,item);}
      for(const entry of [...state.ledger].filter(e=>e.source==="spend:"+o.id||e.source==="purchase:"+o.id))this.credit(state,entry.user_id,-entry.amount,"Возврат тестового заказа","reverse:"+entry.source);
      const referral=state.ledger.find(e=>e.source==="referral:"+o.user_id);
      // Referral reward is tied to the first paid order and is reversed only with that order.
@@ -102,7 +102,7 @@ export class LocalStore {
     case "deleteCategory":if(state.categories.some(c=>c.parent_id===a.id)||state.products.some(p=>p.category_id===a.id))throw new LocalError(409,"Сначала перенесите товары и подкатегории");state.categories=state.categories.filter(c=>c.id!==a.id);break;
     case "product":{
      if(a.category_id&&!state.categories.some(c=>c.id===a.category_id))throw new LocalError(400,"Категория не найдена");
-     const p={attributes:validateAttributes(state.categories,a.category_id,a.attributes,state.characteristics||[]),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,stock:a.stock,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
+     const p={...variantPatch(a,state.products.find(p=>p.id===a.id)),attributes:validateAttributes(state.categories,a.category_id,a.attributes,state.characteristics||[]),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
      const index=state.products.findIndex(x=>x.id===a.id);
      if(a.id&&index<0)throw new LocalError(404,"Товар не найден");
      if(index>=0)state.products[index]=p;else state.products.push(p);break;
@@ -118,7 +118,7 @@ export class LocalStore {
     }
     case "order":{
      const existing=state.orders.find(o=>o.user_id===id&&(o as LocalOrder&{idempotency_key:string}).idempotency_key===a.idempotency_key);if(existing)return {ok:true,orderId:existing.id};
-     if(new Set(a.items.map(i=>i.productId)).size!==a.items.length)throw new LocalError(400,"Товары повторяются");
+     assertLineStock(state.products,a.items);
      const items=a.items.map(i=>{const p=state.products.find(p=>p.id===i.productId);if(!p||!p.active||p.stock<i.quantity)throw new LocalError(409,"Недостаточно товара");return {...i,title:p.title,price:p.price};});
      const subtotal=items.reduce((sum,i)=>sum+i.quantity*i.price,0);
      if(subtotal>100000000)throw new LocalError(400,"Сумма слишком большая");

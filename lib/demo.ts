@@ -1,3 +1,4 @@
+import {variantPatch} from "./variants";
 import {initWorkspace,expiry} from "./workspace";
 import {workspaceActions,workspaceMutation} from "./workspace-mutations";
 import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
@@ -22,7 +23,7 @@ export function previewMutation(state:Snapshot,input:unknown):Snapshot{
  case "image":break;
  case "settings":s.settings=a.value;break;
  case "theme":if(s.me)s.me.theme=a.theme;break;
- case "product":{a.attributes=validateAttributes(s.categories,a.category_id,a.attributes,s.characteristics||[]);const old=s.products.find(p=>p.id===a.id);const p={...a,id:a.id||crypto.randomUUID(),seller_id:old?.seller_id||s.me.id,sku:old?.sku||"SKU-"+crypto.randomUUID().slice(0,8).toUpperCase()};s.products=s.products.filter(x=>x.id!==p.id).concat(p);break;}
+ case "product":{a.attributes=validateAttributes(s.categories,a.category_id,a.attributes,s.characteristics||[]);const old=s.products.find(p=>p.id===a.id);const p={...a,...variantPatch(a,old),id:a.id||crypto.randomUUID(),seller_id:old?.seller_id||s.me.id,sku:old?.sku||"SKU-"+crypto.randomUUID().slice(0,8).toUpperCase()};s.products=s.products.filter(x=>x.id!==p.id).concat(p);break;}
  case "deleteProduct":s.products=s.products.map(p=>p.id===a.id?{...p,active:false}:p);break;
  case "category":{
  if(a.parent_id && (a.parent_id===a.id || s.categories.find(c=>c.id===a.parent_id)?.parent_id))throw new Error("Выберите главную категорию");

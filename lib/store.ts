@@ -1,3 +1,4 @@
+import {variantPatch,assertLineStock} from "./variants";
 import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
 import {publicCatalog} from "./catalog";
 import type {PoolClient} from "pg";
@@ -91,16 +92,18 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const categories=(await c.query("SELECT * FROM categories")).rows;
    const registry=(await c.query("SELECT key,label,unit FROM characteristic_definitions")).rows;
    const attributes=validateAttributes(categories,a.category_id,a.attributes,registry);
-   const args=[a.title,a.description,a.price,a.stock,a.category_id,await savePicture(c,a.image_url),a.active];
-   if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7,attributes=$9 WHERE id=$8",[...args,a.id,JSON.stringify(attributes)]);
-   else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active,attributes) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[...args,JSON.stringify(attributes)]);
+   const patch=variantPatch(a,a.id?(await c.query("SELECT * FROM products WHERE id=$1 FOR UPDATE",[a.id])).rows[0]:undefined);
+   const args=[a.title,a.description,a.price,patch.stock,a.category_id,await savePicture(c,a.image_url),a.active];
+   if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7,attributes=$9,variant_stocks=$10,variant_label=$11,variants=$12 WHERE id=$8",[...args,a.id,JSON.stringify(attributes),JSON.stringify(patch.variant_stocks),patch.variant_label,JSON.stringify(patch.variants)]);
+   else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active,attributes,variant_stocks,variant_label,variants) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",[...args,JSON.stringify(attributes),JSON.stringify(patch.variant_stocks),patch.variant_label,JSON.stringify(patch.variants)]);
   }
   if(a.action==="deleteProduct")await c.query("UPDATE products SET active=false WHERE id=$1",[a.id]);
   if(a.action==="order"){
    const existing=(await c.query("SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2",[me.id,a.idempotency_key])).rows[0];
    if(existing)return {ok:true,orderId:existing.id};
-   if(new Set(a.items.map(i=>i.productId)).size!==a.items.length)throw new ApiError(400,"Товары в корзине повторяются");
+   
    const products=(await c.query("SELECT * FROM products WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE",[a.items.map(i=>i.productId)])).rows as Product[];
+   assertLineStock(products,a.items);
    const items=a.items.map(i=>{
     const p=products.find(p=>p.id===i.productId);
     if(!p || !p.active || p.stock<i.quantity)throw new ApiError(409,"Товар недоступен или изменилось количество");
