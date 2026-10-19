@@ -19,6 +19,7 @@ const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("setRate"),scope:z.enum(["product","category","seller"]),target_id:z.string(),seller_id:z.string(),amount}),
  z.object({action:z.literal("deleteRate"),id}),
  z.object({action:z.literal("requestAudit"),id,seller_id:z.string(),note:short}),
+ z.object({action:z.literal("requestAllAudits"),id,note:short}),
  z.object({action:z.literal("remindAudit"),id,note:short}),
  z.object({action:z.literal("submitAudit"),id,note:short,photo:image.min(1),items:z.array(z.object({productId:id,good:amount,damaged:amount})).min(1).max(500)}),
  z.object({action:z.literal("approveAudit"),id}),
@@ -30,7 +31,7 @@ const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("manualBonus"),id,target:z.string().trim().min(1),amount:amount.positive(),reason:short.min(3)}),
  z.object({action:z.literal("notificationSettings"),enabled:z.boolean()})
 ]);
-export const workspaceActions=new Set(["complainOrder","readNotices","reviewComplaint","personalStyle","shopStyle","bannerStyle","productVariants","assignRole","financeEntry","reviewReturn","setRate","deleteRate","requestAudit","remindAudit","submitAudit","approveAudit","rewardSettings","bonusRule","deleteBonusRule","manualBonus","notificationSettings","selfAudit","allocateStock","returnAudit","deleteAudit"]);
+export const workspaceActions=new Set(["complainOrder","readNotices","reviewComplaint","personalStyle","shopStyle","bannerStyle","productVariants","assignRole","financeEntry","reviewReturn","setRate","deleteRate","requestAudit","remindAudit","submitAudit","approveAudit","rewardSettings","bonusRule","deleteBonusRule","manualBonus","notificationSettings","selfAudit","allocateStock","returnAudit","deleteAudit","requestAllAudits"]);
 export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  const parsed=schema.safeParse(input);if(!parsed.success)throw new Error("Проверьте обязательные поля, суммы и формат изображений");
  const a=parsed.data,s=initWorkspace(structuredClone(state)),w=s.workspace!,me=s.me;if(!me)throw new Error("Войдите в аккаунт");const admin=["owner","deputy"].includes(me.role),now=new Date().toISOString();
@@ -45,7 +46,7 @@ export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  notify(s,me.id,"Жалоба на заказ #"+o.id.slice(-8)+" передана владельцу и заместителю.","complaint-confirm:"+a.id,true);return s;
  }
  if(a.action==="personalStyle"){me.personal=a.value;syncProfile(s,me);return s;}
- if(a.action==="selfAudit"){if(me.role!=="seller")throw new Error("Доступно продавцу");if(!w.audits.some(r=>r.id===a.id))w.audits.push({id:a.id,seller_id:me.id,note:"Ревизия по инициативе продавца",created_at:now,status:"pending",photo:"",items:[]});return s;}
+ if(a.action==="selfAudit")throw new Error("Ревизию назначает только владелец или заместитель");
  if(a.action==="submitAudit"){
  const r=w.audits.find(r=>r.id===a.id&&r.seller_id===me.id);if(me.role!=="seller"||!r)throw new Error("Ревизия не найдена");if(r.status!=="pending")throw new Error("Ревизия уже отправлена");
  const own=(s.sellerStocks||[]).filter(p=>p.seller_id===me.id);if(a.items.length!==own.length||new Set(a.items.map(i=>i.productId)).size!==own.length)throw new Error("Заполните все товары без повторов");
@@ -65,6 +66,7 @@ export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  case "setRate":{if(a.scope==="product"?!s.products.some(p=>p.id===a.target_id):!s.categories.some(c=>c.id===a.target_id))throw new Error("Выберите товар или категорию");if(a.scope==="seller"&&!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Выберите продавца");w.rates=w.rates.filter(r=>!(r.scope===a.scope&&r.target_id===a.target_id&&r.seller_id===a.seller_id));w.rates.push({...a,id:crypto.randomUUID()});break;}
  case "deleteRate":w.rates=w.rates.filter(r=>r.id!==a.id);break;
  case "deleteAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r)break;if(r.status==="approved")throw new Error("Согласованную ревизию нельзя удалить: остатки уже учтены");w.audits=w.audits.filter(r=>r.id!==a.id);notify(s,r.seller_id,"Ревизия отменена руководством. Заполнять её больше не требуется.","audit-delete:"+a.id);break;}
+ case "requestAllAudits":{const sellers=s.team.filter(p=>p.role==="seller").sort((a,b)=>a.id.localeCompare(b.id));if(!sellers.length)throw new Error("В магазине пока нет продавцов");for(const [index,p] of sellers.entries()){const auditId=a.id.slice(0,24)+index.toString(16).padStart(12,"0");if(w.audits.some(r=>r.id===auditId))continue;w.audits.push({id:auditId,seller_id:p.id,note:a.note,created_at:now,status:"pending",photo:"",items:[]});notify(s,p.id,"Назначена общая ревизия. Пересчитайте товар, укажите брак и приложите чёткое фото всего товара. "+a.note,"audit:"+auditId);}break;}
  case "requestAudit":if(!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Продавец не найден");if(!w.audits.some(r=>r.id===a.id)){w.audits.push({id:a.id,seller_id:a.seller_id,note:a.note,created_at:now,status:"pending",photo:"",items:[]});notify(s,a.seller_id,"Завершите ревизию: пересчитайте товар, укажите брак и приложите чёткое фото всего товара. "+a.note,"audit:"+a.id);}break;
  case "remindAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status!=="pending")throw new Error("Нет ожидающей ревизии");notify(s,r.seller_id,"Напоминание: завершите ревизию. "+a.note,"reminder:"+r.id+":"+now);break;}
  case "returnAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status!=="submitted")throw new Error("Можно вернуть только отправленную ревизию");r.status="pending";r.items=[];r.photo="";r.note+="\nПовторный пересчёт: "+a.note;notify(s,r.seller_id,"Ревизия возвращена на пересчёт. "+a.note,"audit-return:"+r.id+":"+now);break;}
