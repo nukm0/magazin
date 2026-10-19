@@ -1,3 +1,4 @@
+import {fillAudit,approveAuditStock,auditMetrics} from "./audits";
 import {reservedStock} from "./transfers";
 import {canComplain,complaintReasons} from "./buyer";
 import {z} from "zod";
@@ -22,7 +23,7 @@ const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("requestAudit"),id,seller_id:z.string(),note:short}),
  z.object({action:z.literal("requestAllAudits"),id,note:short}),
  z.object({action:z.literal("remindAudit"),id,note:short}),
- z.object({action:z.literal("submitAudit"),id,note:short,photo:image.min(1),items:z.array(z.object({productId:id,good:amount,damaged:amount})).min(1).max(500)}),
+ z.object({action:z.literal("submitAudit"),id,note:short,photo:image.min(1),items:z.array(z.object({productId:id,variant:z.string().trim().min(1).max(80).optional(),good:amount,damaged:amount})).min(1).max(500)}),
  z.object({action:z.literal("approveAudit"),id}),
  z.object({action:z.literal("returnAudit"),id,note:short.min(3)}),
  z.object({action:z.literal("deleteAudit"),id}),
@@ -50,9 +51,8 @@ export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  if(a.action==="selfAudit")throw new Error("Ревизию назначает только владелец или заместитель");
  if(a.action==="submitAudit"){
  const r=w.audits.find(r=>r.id===a.id&&r.seller_id===me.id);if(me.role!=="seller"||!r)throw new Error("Ревизия не найдена");if(r.status!=="pending")throw new Error("Ревизия уже отправлена");
- const own=(s.sellerStocks||[]).filter(p=>p.seller_id===me.id);if(a.items.length!==own.length||new Set(a.items.map(i=>i.productId)).size!==own.length)throw new Error("Заполните все товары без повторов");
- r.items=a.items.map(i=>{const p=own.find(p=>p.productId===i.productId);if(!p||i.good+i.damaged>1000000)throw new Error("Некорректный пересчёт");return {...i,expected:p.quantity};});r.photo=a.photo;r.note+=(a.note?"\nКомментарий продавца: "+a.note:"");r.status="submitted";r.submitted_at=now;
- for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,`Ревизия ${me.first_name} отправлена. Расхождение: ${r.items.reduce((n,i)=>n+i.good+i.damaged-i.expected,0)} шт.`,"audit-submit:"+r.id);return s;
+ fillAudit(s,r,a.items,now);r.photo=a.photo;r.note+=(a.note?"\nКомментарий продавца: "+a.note:"");r.status="submitted";r.submitted_at=now;
+ const report=auditMetrics(s,r);for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,`Ревизия @${me.username} сдана. Брак: ${report.damaged} шт.; недостача: ${report.shortage} шт.; излишек: ${report.surplus} шт.`,"audit-submit:"+r.id+":"+now,true);return s;
  }
  if(!admin)throw new Error("Доступно владельцу и заместителю");
  switch(a.action){
@@ -71,7 +71,8 @@ export function workspaceMutation(state:Snapshot,input:unknown):Snapshot{
  case "requestAudit":if(!s.team.some(p=>p.id===a.seller_id&&p.role==="seller"))throw new Error("Продавец не найден");if(!w.audits.some(r=>r.id===a.id)){w.audits.push({id:a.id,seller_id:a.seller_id,note:a.note,created_at:now,status:"pending",photo:"",items:[]});notify(s,a.seller_id,"Завершите ревизию: пересчитайте товар, укажите брак и приложите чёткое фото всего товара. "+a.note,"audit:"+a.id);}break;
  case "remindAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status!=="pending")throw new Error("Нет ожидающей ревизии");notify(s,r.seller_id,"Напоминание: завершите ревизию. "+a.note,"reminder:"+r.id+":"+now);break;}
  case "returnAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status!=="submitted")throw new Error("Можно вернуть только отправленную ревизию");r.status="pending";r.items=[];r.photo="";r.note+="\nПовторный пересчёт: "+a.note;notify(s,r.seller_id,"Ревизия возвращена на пересчёт. "+a.note,"audit-return:"+r.id+":"+now);break;}
- case "approveAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status==="pending")throw new Error("Продавец ещё не заполнил ревизию");if(r.status==="approved")break;for(const i of r.items){const stock=s.sellerStocks?.find(p=>p.productId===i.productId&&p.seller_id===r.seller_id);if(!stock||stock.quantity!==i.expected)throw new Error("Остатки изменились после отправки. Запросите новый пересчёт");if(reservedStock(s,r.seller_id,i.productId)&&i.good!==stock.quantity)throw new Error("Завершите перемещение перед изменением остатка ревизией");const product=s.products.find(p=>p.id===i.productId);if(product?.variant_stocks?.length&&i.good!==stock.quantity)throw new Error("Уточните остатки каждого варианта в объявлении");if(!product||product.stock+i.good-stock.quantity<0)throw new Error("Остатки магазина расходятся с учётом продавца");}for(const i of r.items){const stock=s.sellerStocks!.find(p=>p.productId===i.productId&&p.seller_id===r.seller_id)!,p=s.products.find(p=>p.id===i.productId);if(p)p.stock+=i.good-stock.quantity;stock.quantity=i.good;}r.status="approved";r.approved_at=now;notify(s,r.seller_id,"Ревизия согласована. Остатки обновлены, брак исключён из доступного товара.","audit-approve:"+r.id);break;}
+ case "approveAudit":{const r=w.audits.find(r=>r.id===a.id);if(!r||r.status==="pending")throw new Error("Продавец ещё не заполнил ревизию");if(r.status==="approved")break;approveAuditStock(s,r);r.status="approved";r.approved_at=now;notify(s,r.seller_id,"Ревизия согласована. Остатки обновлены, брак исключён из доступного товара.","audit-approve:"+r.id);break;}
+
  case "rewardSettings":if(a.kind==="percent"&&a.value>100)throw new Error("Процент не больше 100");w.referral={kind:a.kind,value:a.value,limit:a.limit};s.settings.purchase_percent=a.purchase_percent;break;
  case "bonusRule":if(a.kind==="percent"&&a.value>100)throw new Error("Процент не больше 100");for(const r of a.requirements){if(r.category_id&&!s.categories.some(c=>c.id===r.category_id))throw new Error("Категория не найдена");if(r.product_id&&!s.products.some(p=>p.id===r.product_id&&(!r.category_id||[p.category_id,s.categories.find(c=>c.id===p.category_id)?.parent_id].includes(r.category_id))))throw new Error("Товар не входит в категорию");}w.bonusRules=w.bonusRules.filter(r=>r.id!==a.id).concat(a);break;
  case "deleteBonusRule":w.bonusRules=w.bonusRules.filter(r=>r.id!==a.id);break;
