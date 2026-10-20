@@ -1,3 +1,4 @@
+import {orderCreatedMessage,orderStatusMessage} from "./bot-messages";
 import {z} from "zod";
 import {initWorkspace} from "./workspace";
 import {notificationsEnabled,enqueueNotice} from "./notification-outbox.server";
@@ -120,7 +121,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    if(!Number.isSafeInteger(total)||total>100000000)throw new ApiError(400,"Сумма заказа слишком большая");
    if((await c.query("SELECT 1 FROM orders WHERE user_id=$1 AND created_at>now()-interval '1 minute' LIMIT 1",[me.id])).rowCount)throw new ApiError(429,"Подождите минуту перед следующим заказом");
    const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key,comment,payment_method,buyer_telegram) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",[me.id,JSON.stringify(items),total,me.username?"@"+me.username:a.contact,a.address,a.idempotency_key,a.comment||"",a.payment_method,JSON.stringify({id:me.id,username:me.username,first_name:me.first_name,photo_url:me.photo_url,verified:true})])).rows[0];
-   if(notificationsEnabled()){await enqueueNotice(c,me.id,"Ваш заказ #"+order.id.slice(-8)+" создан. Ожидайте связи с сотрудником.","order-created:"+order.id,{type:"order",id:order.id});const recipients=(await c.query("SELECT id FROM profiles WHERE role='deputy' OR id=$1",[owner])).rows;for(const p of recipients)await enqueueNotice(c,p.id,"Новый заказ #"+order.id.slice(-8)+" от "+(me.username?"@"+me.username:me.first_name)+": "+total/100+" ₽.","order-created-admin:"+order.id,{type:"order",id:order.id});}
+   if(notificationsEnabled()){const shop=(await c.query("SELECT data FROM settings WHERE id=1")).rows[0]?.data?.name||"Мой магазин";await enqueueNotice(c,me.id,orderCreatedMessage(shop,order.id,total,items),"order-created:"+order.id,{type:"order",id:order.id});const recipients=(await c.query("SELECT id FROM profiles WHERE role='deputy' OR id=$1",[owner])).rows;for(const p of recipients)await enqueueNotice(c,p.id,orderCreatedMessage(shop,order.id,total,items,me.username?"@"+me.username:me.first_name),"order-created-admin:"+order.id,{type:"order",id:order.id});}
    return {ok:true,orderId:order.id};
   }
   if(a.action==="orderStatus"){
@@ -128,7 +129,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const allowed:Record<string,string[]>={awaiting_payment_setup:["cancelled"],pending:["cancelled"],paid:["shipped"],shipped:["completed"]};
    if(!order || !allowed[order.status]?.includes(a.status))throw new ApiError(400,"Этот переход статуса недоступен");
    await c.query("UPDATE orders SET status=$1 WHERE id=$2",[a.status,a.id]);
-   if(notificationsEnabled())await enqueueNotice(c,order.user_id,"Заказ #"+a.id.slice(-8)+": "+({cancelled:"отменён",shipped:"передан в доставку",completed:"доставлен"}[a.status])+".","order-status:"+a.id+":"+a.status,{type:"order",id:a.id});
+   if(notificationsEnabled()){const shop=(await c.query("SELECT data FROM settings WHERE id=1")).rows[0]?.data?.name||"Мой магазин",recipients=(await c.query("SELECT id FROM profiles WHERE role='deputy' OR id=$1",[owner])).rows;for(const user_id of new Set([order.user_id,...recipients.map(p=>p.id)]))await enqueueNotice(c,user_id,orderStatusMessage(shop,a.id,a.status),"order-status:"+a.id+":"+a.status,{type:"order",id:a.id});}
   }
   await audit(c,me.id,a.action);
   return {ok:true};

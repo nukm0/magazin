@@ -1,8 +1,8 @@
-import {webhookSecret,botAppUrl} from "@/lib/bot-config";
+import {welcomeMessage} from "@/lib/bot-messages";
+import {webhookSecret} from "@/lib/bot-config";
 import {timingSafeEqual} from "node:crypto";
 import {notificationsEnabled,enqueueNotice,dispatchNotifications} from "@/lib/notification-outbox.server";
 import {transaction} from "@/lib/db";
-import {database} from "@/lib/db";
 import {NextResponse,after} from "next/server";
 export const runtime="nodejs";
 async function botCall(method:string,body:unknown){
@@ -17,12 +17,21 @@ export async function POST(request:Request){
  try{
  const update=await request.json();
  if(update.pre_checkout_query)await botCall("answerPreCheckoutQuery",{pre_checkout_query_id:update.pre_checkout_query.id,ok:false,error_message:"Приём онлайн-платежей пока не подключён."});
- const m=update.message;
- if(m?.chat?.type==="private" && /^\/help(?:@\w+)?(?:\s|$)/.test(m.text||"")){await botCall("sendMessage",{chat_id:m.chat.id,text:"Нажмите «Открыть магазин»: выберите товары, добавьте их в корзину и создайте заказ. Оплата — при получении. Ваши заказы и уведомления находятся в личном кабинете.",reply_markup:{inline_keyboard:[[{text:"Открыть магазин",web_app:{url:botAppUrl()}}]]}});return NextResponse.json({ok:true});}
- if(m?.chat?.type==="private" && /^\/start(?:@\w+)?(?:\s|$)/.test(m.text||"") ){
-  if(process.env.DATABASE_URL&&String(m.from?.id)===String(m.chat.id)){const ref=/^\/start(?:@\w+)?\s+ref_([1-9]\d{0,15})$/.exec(m.text||"")?.[1];await database().query("INSERT INTO bot_starts(user_id,referred_by) VALUES($1,(SELECT id FROM profiles WHERE id=$2 AND id<>$1)) ON CONFLICT(user_id) DO NOTHING",[String(m.from.id),ref||null]);}
-  if(notificationsEnabled()){await transaction(c=>enqueueNotice(c,String(m.chat.id),"Добро пожаловать! Каталог, корзина и личный кабинет доступны в магазине.","welcome:"+m.message_id));after(async()=>{try{await dispatchNotifications()}catch{console.error("Notification dispatch unavailable")}});}else await botCall("sendMessage",{chat_id:m.chat.id,text:"Добро пожаловать! Каталог, корзина и личный кабинет доступны в магазине.",reply_markup:{inline_keyboard:[[{text:"Открыть магазин",web_app:{url:botAppUrl()}}]]}});
+ const m=update.message,command=/^\/(start|help)(?:@\w+)?(?:\s|$)/.exec(m?.text||"")?.[1];
+ if(m?.chat?.type==="private"&&command&&String(m.from?.id)===String(m.chat.id)){
+  const id=String(m.from.id);
+  if(!notificationsEnabled())return NextResponse.json({ok:false},{status:503});
+  await transaction(async c=>{
+   const shop=(await c.query("SELECT data FROM settings WHERE id=1")).rows[0]?.data||{};
+   const owner=(await c.query("SELECT owner_id FROM ownership WHERE id=1")).rows[0]?.owner_id||process.env.OWNER_TELEGRAM_ID;
+   const profile=(await c.query("SELECT role FROM profiles WHERE id=$1",[id])).rows[0];
+   const role=id===owner?"owner":profile?.role==="deputy"?"deputy":profile?.role==="seller"?"seller":"buyer";
+   if(command==="start"){const ref=/^\/start(?:@\w+)?\s+ref_([1-9]\d{0,15})$/.exec(m.text||"")?.[1];await c.query("INSERT INTO bot_starts(user_id,referred_by) VALUES($1,(SELECT id FROM profiles WHERE id=$2 AND id<>$1)) ON CONFLICT(user_id) DO NOTHING",[id,ref||null]);}
+   await enqueueNotice(c,id,welcomeMessage(shop,{id,first_name:m.from.first_name,username:m.from.username,role},command==="help"),command+":"+String(m.message_id));
+  });
+  after(async()=>{try{await dispatchNotifications()}catch{console.error("Notification dispatch unavailable")}});
  }
+
  return NextResponse.json({ok:true});
  }catch{return NextResponse.json({ok:false},{status:500});}
 }
