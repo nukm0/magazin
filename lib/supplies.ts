@@ -3,7 +3,7 @@ import {z} from "zod";
 import type {Snapshot,Product} from "./types";
 import type {CrmItem,Supply} from "./workspace-types";
 import {initWorkspace,notify} from "./workspace";
-const id=z.string().uuid(),money=z.number().int().min(0).max(100000000),photo=z.string().max(2800000).refine(v=>/^https:\/\//.test(v)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v));
+const id=z.string().uuid(),money=z.number().int().min(0).max(100000000),photo=z.string().max(2800000).refine(v=>(/^https:\/\//.test(v)||/^\/api\/media\/[0-9a-f-]{36}$/.test(v))||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v));
 const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("supplyTaxPayment"),id}),
  z.object({action:z.literal("crmExpense"),id,date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),title:z.string().trim().min(1).max(150),amount:money.positive()}),

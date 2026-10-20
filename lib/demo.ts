@@ -20,7 +20,7 @@ export function previewMutation(state:Snapshot,input:unknown):Snapshot{
  if(input&&typeof input==="object"&&"action" in input&&input.action==="refreshDemo")return state;
  if(input&&typeof input==="object"&&"action" in input&&workspaceActions.has(String(input.action)))return workspaceMutation(state,input);
  if(input&&typeof input==="object"&&"action" in input&&["claimOrder","returnOrder","acceptOrder","deliverOrder","inventoryReview","stockReceipt","demoOrder"].includes(String(input.action)))return sellerMutation(state,input);
- const a=actionSchema.parse(input),s=withPreviewProfiles(structuredClone(state));
+ const a=actionSchema.parse(input),s=state.live?structuredClone(state):withPreviewProfiles(structuredClone(state));
  if(!s.me)throw new Error("Выберите аккаунт");
  if(a.action==="transferOwner"&&s.me.role!=="owner")throw new Error("Управлять доступом может только владелец");
  if(!["theme","order"].includes(a.action)&&s.me.role==="buyer")throw new Error("У покупателя нет доступа к управлению магазином");

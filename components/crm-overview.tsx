@@ -7,7 +7,7 @@ import {localDay} from "@/lib/reports";
 import {money} from "@/lib/format";
 export default function CrmOverview({data}:{data:Snapshot}){
  const today=localDay(new Date()),[mode,setMode]=useState("sales"),[from,setFrom]=useState(()=>{const d=new Date();d.setDate(d.getDate()-29);return localDay(d)}),[to,setTo]=useState(today),[legacyExpenses,setExpenses]=useState<CrmExpense[]>([]),[expenseError,setExpenseError]=useState(false);
- useEffect(()=>{try{const list=JSON.parse(localStorage.getItem("magazin-crm-empty-v3")||"[]");if(!Array.isArray(list))throw new Error();const valid=list.filter(e=>e&&typeof e.date==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(e.date)&&Number.isSafeInteger(e.amount)&&e.amount>=0&&typeof e.title==="string");if(valid.length!==list.length)setExpenseError(true);setExpenses(valid);}catch{setExpenseError(true)}},[]);
+ useEffect(()=>{if(data.live)return;try{const list=JSON.parse(localStorage.getItem("magazin-crm-empty-v3")||"[]");if(!Array.isArray(list))throw new Error();const valid=list.filter(e=>e&&typeof e.date==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(e.date)&&Number.isSafeInteger(e.amount)&&e.amount>=0&&typeof e.title==="string");if(valid.length!==list.length)setExpenseError(true);setExpenses(valid);}catch{setExpenseError(true)}},[]);
  const expenses=[...legacyExpenses,...(data.workspace?.expenses||[])];
  const r=crmReport(data,from,to,expenses),max=Math.max(1,...r.rows.map(x=>x.revenue)),unknown=expenseError||!!(r.unknownCosts||r.unknownPayouts||r.unknownLosses),profit=unknown?null:r.profit;
  const metrics=[["Выручка",money(r.revenue)],["Прибыль",profit===null?"Не все данные":money(profit)],["Выполнено заказов",String(r.orders.length)],["Средний чек",money(r.average)]];

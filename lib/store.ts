@@ -63,6 +63,9 @@ export async function mutate(request:Request,input:unknown) {
  return transaction(c=>applyMutation(c,me,a));
 }
 export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof actionSchema.parse>){
+  // Activation takes the exclusive counterpart so an older in-flight request cannot write after the transition.
+  await c.query("SELECT pg_advisory_xact_lock_shared(98477301)");
+  if((await c.query("SELECT to_regclass('public.shop_state') AS name")).rows[0]?.name && (await c.query("SELECT data->>'live' AS enabled FROM shop_state WHERE id=1")).rows[0]?.enabled==='true')throw new ApiError(409,"Магазин обновлён. Повторите действие.");
   // Lock the current role for the duration of a mutation; revocation waits for this transaction.
   const owner=(await c.query("SELECT owner_id FROM ownership WHERE id=1 FOR UPDATE")).rows[0]?.owner_id;
   const row=(await c.query("SELECT role FROM profiles WHERE id=$1 FOR UPDATE",[me.id])).rows[0];

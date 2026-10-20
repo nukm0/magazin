@@ -4,7 +4,7 @@ import {canComplain,complaintReasons} from "./buyer";
 import {z} from "zod";
 import type {Snapshot} from "./types";
 import {initWorkspace,syncProfile,notify,manualBonus} from "./workspace";
-const id=z.string().uuid(),short=z.string().trim().max(1000),amount=z.number().int().nonnegative().max(100000000),image=z.string().max(2800000).refine(v=>!v||/^https:\/\//.test(v)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v),"Нужно изображение PNG, JPEG, WebP или HTTPS-ссылка"),accent=z.enum(["purple","blue","pink","red","mono"]);
+const id=z.string().uuid(),short=z.string().trim().max(1000),amount=z.number().int().nonnegative().max(100000000),image=z.string().max(2800000).refine(v=>!v||(/^https:\/\//.test(v)||/^\/api\/media\/[0-9a-f-]{36}$/.test(v))||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v),"Нужно изображение PNG, JPEG, WebP или HTTPS-ссылка"),accent=z.enum(["purple","blue","pink","red","mono"]);
 const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("readNotices"),ids:z.array(id).max(1000)}),
  z.object({action:z.literal("complainOrder"),id,order_id:id,reason:z.enum(complaintReasons),comment:short.min(3)}),
