@@ -12,7 +12,7 @@ import {FaqContent} from "./role-faq";
 import SellerInventory from "./seller-inventory";
 import StockTransfers from "./stock-transfers";
 import SellerOrders from "./seller-orders";
-const sellerMenus=[{id:"faq",name:"FAQ · Помощь",description:"Как пользоваться кабинетом",icon:UserRound},{id:"transfers",name:"Перемещения",description:"Передача товара между продавцами",icon:Package},{id:"orders",name:"Заказы покупателей",description:"Общая лента и доставка",icon:ShoppingBag},{id:"stock",name:"Мои товары",description:"Наличие и варианты",icon:Package},{id:"revision",name:"Ревизия",description:"Пересчёт и проверка товара",icon:ClipboardCheck},{id:"history",name:"Профиль и история",description:"Штрафы, премии и события",icon:UserRound},{id:"sales",name:"Статистика продаж",description:"Продажи и ваш заработок",icon:BarChart3}];
+const sellerMenus=[{id:"faq",name:"FAQ · Помощь",description:"Как пользоваться кабинетом",icon:UserRound},{id:"transfers",name:"Перемещения",description:"Передача товара между продавцами",icon:Package},{id:"orders",name:"Заказы покупателей",description:"Общая лента и доставка",icon:ShoppingBag},{id:"stock",name:"Мои товары",description:"Наличие и варианты",icon:Package},{id:"revision",name:"Ревизия",description:"Пересчёт и проверка товара",icon:ClipboardCheck},{id:"history",name:"История",description:"Начисления и события",icon:UserRound},{id:"sales",name:"Статистика продаж",description:"Продажи и ваш заработок",icon:BarChart3}];
 type Props={initialTab?:string;data:Snapshot;busy:boolean;act:(input:unknown)=>Promise<unknown>};
 export default function SellerCabinet({data,busy,act,initialTab="orders"}:Props){
  const [tab,setTab]=useState<string|null>(initialTab==="history"?null:initialTab),[error,setError]=useState("");
