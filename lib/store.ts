@@ -99,6 +99,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
   }
   if(a.action==="deleteProduct")await c.query("UPDATE products SET active=false WHERE id=$1",[a.id]);
   if(a.action==="order"){
+   if(a.payment_method==="online")throw new ApiError(409,"Онлайн-оплата пока не подключена. Оплатите при получении.");
    const existing=(await c.query("SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2",[me.id,a.idempotency_key])).rows[0];
    if(existing)return {ok:true,orderId:existing.id};
    
@@ -112,7 +113,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const total=items.reduce((s,i)=>s+i.price*i.quantity,0);
    if(!Number.isSafeInteger(total)||total>100000000)throw new ApiError(400,"Сумма заказа слишком большая");
    if((await c.query("SELECT 1 FROM orders WHERE user_id=$1 AND created_at>now()-interval '1 minute' LIMIT 1",[me.id])).rowCount)throw new ApiError(429,"Подождите минуту перед следующим заказом");
-   const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key,comment) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[me.id,JSON.stringify(items),total,a.contact,a.address,a.idempotency_key,a.comment||""])).rows[0];
+   const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key,comment,payment_method) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",[me.id,JSON.stringify(items),total,a.contact,a.address,a.idempotency_key,a.comment||"",a.payment_method])).rows[0];
    return {ok:true,orderId:order.id};
   }
   if(a.action==="orderStatus"){

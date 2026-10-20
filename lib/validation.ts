@@ -20,7 +20,7 @@ export const actionSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("theme"),theme:theme.nullable()}),
  z.object({action:z.literal("transferOwner"),id:z.string().regex(/^[1-9]\d{0,15}$/)}),
  z.object({action:z.literal("deputy"),id:z.string().regex(/^[1-9]\d{0,15}$/),enabled:z.boolean()}),
- z.object({action:z.literal("order"),idempotency_key:uuid,items:z.array(z.object({productId:uuid,quantity:z.number().int().min(1).max(99),variant:z.string().trim().max(80).optional()})).min(1).max(50),contact:telegramContact,address:text(1000),comment:z.string().trim().max(1000).optional()}),
+ z.object({action:z.literal("order"),payment_method:z.enum(["cash","online"]).default("cash"),idempotency_key:uuid,items:z.array(z.object({productId:uuid,quantity:z.number().int().min(1).max(99),variant:z.string().trim().max(80).optional()})).min(1).max(50),contact:telegramContact,address:text(1000),comment:z.string().trim().max(1000).optional()}),
  z.object({action:z.literal("orderStatus"),id:uuid,status:z.enum(["cancelled","shipped","completed"])})
 ]);
 export function rublesToKopecks(input:string) {

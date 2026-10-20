@@ -11,7 +11,7 @@ const schema=z.discriminatedUnion("action",[
  z.object({action:z.literal("acceptOrder"),id:uuid}),
  z.object({action:z.literal("deliverOrder"),id:uuid}),
  z.object({action:z.literal("returnOrder"),id:uuid,reason:z.string().trim().min(3).max(1000)}),
- z.object({action:z.literal("demoOrder"),spend_bonus:z.number().int().nonnegative().optional(),id:uuid,items:z.array(z.object({productId:uuid,quantity:quantity.min(1).max(99),variant:z.string().max(80).optional()})).min(1).max(50),contact:telegramContact,address:z.string().trim().min(1).max(1000),comment:z.string().trim().max(1000).optional()}),
+ z.object({action:z.literal("demoOrder"),payment_method:z.enum(["cash","online"]).default("cash"),spend_bonus:z.number().int().nonnegative().optional(),id:uuid,items:z.array(z.object({productId:uuid,quantity:quantity.min(1).max(99),variant:z.string().max(80).optional()})).min(1).max(50),contact:telegramContact,address:z.string().trim().min(1).max(1000),comment:z.string().trim().max(1000).optional()}),
  z.object({action:z.literal("stockReceipt"),id:uuid,productId:uuid,quantity:quantity.min(1),note:z.string().trim().min(1).max(500)}),
  z.object({action:z.literal("inventoryReview"),id:uuid,note:z.string().trim().min(1).max(500),items:z.array(z.object({productId:uuid,expected:quantity,actual:quantity})).min(1).max(500)})
 ]);
@@ -20,12 +20,13 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  if(!me)throw new Error("Выберите аккаунт");
  const created_at=new Date().toISOString();s.inventoryReviews??=[];s.orderEvents??=[];s.sellerEarnings??=[];s.sellerStocks??=[];
  if(a.action==="demoOrder"){
+ if(a.payment_method==="online")throw new Error("Онлайн-оплата пока не подключена. Оплатите при получении.");
  if(me.role!=="buyer")throw new Error("Заказ создаёт только покупатель");if(s.orders.some(o=>o.id===a.id))return s;
  assertLineStock(s.products,a.items);
  const items=a.items.map(i=>{const p=s.products.find(p=>p.id===i.productId&&p.active);if(!p||p.stock<i.quantity)throw new Error("Недостаточно товара");if(p.variants?.length&&(!i.variant||!p.variants.includes(i.variant)))throw new Error("Выберите вариант товара");return {...i,title:p.title,price:p.price,unit_cost:p.unit_cost??null};});
  const spend=a.spend_bonus||0;const subtotal=items.reduce((n,i)=>n+i.price*i.quantity,0);if(spend>me.balance||spend*100>subtotal)throw new Error("Недостаточно бонусов или превышена стоимость товаров");if(spend){me.balance-=spend;s.team=s.team.map(p=>p.id===me.id?structuredClone(me):p);s.workspace!.bonuses.push({id:crypto.randomUUID(),user_id:me.id,amount:-spend,reason:"Списание бонусов при заказе",source:"spend:"+a.id,created_at});}
  const quote=cartQuote(items.map(i=>({product:s.products.find(p=>p.id===i.productId)!,quantity:i.quantity})));const delivery_fee=quote.delivery;
- s.orders.push({id:a.id,user_id:me.id,created_at,status:"open",bonus_spent:spend,seller_id:null,items,contact:a.contact,address:a.address,comment:a.comment||"",price_details:{goods:quote.goods,delivery:quote.shownDelivery,show_delivery:quote.showDelivery},delivery_fee,show_delivery:items.some(i=>s.products.find(p=>p.id===i.productId)?.show_delivery),total:subtotal+delivery_fee-spend*100});notify(s,me.id,"Заказ #"+a.id.slice(-8)+" создан. Ожидайте ответа продавца.","new-buyer:"+a.id);for(const p of s.team.filter(p=>p.role==="seller"))notify(s,p.id,"Новый заказ #"+a.id.slice(-8)+" доступен в общей ленте.","new-seller:"+a.id);return s;
+ s.orders.push({id:a.id,payment_method:a.payment_method,user_id:me.id,created_at,status:"open",bonus_spent:spend,seller_id:null,items,contact:a.contact,address:a.address,comment:a.comment||"",price_details:{goods:quote.goods,delivery:quote.shownDelivery,show_delivery:quote.showDelivery},delivery_fee,show_delivery:items.some(i=>s.products.find(p=>p.id===i.productId)?.show_delivery),total:subtotal+delivery_fee-spend*100});notify(s,me.id,"Заказ #"+a.id.slice(-8)+" создан. Ожидайте ответа продавца.","new-buyer:"+a.id);for(const p of s.team.filter(p=>p.role==="seller"))notify(s,p.id,"Новый заказ #"+a.id.slice(-8)+" доступен в общей ленте.","new-seller:"+a.id);return s;
  }
  if(me.role!=="seller")throw new Error("Действие доступно только продавцу");
  const own=s.sellerStocks.filter(p=>p.seller_id===me.id);

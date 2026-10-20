@@ -36,3 +36,5 @@ CREATE TABLE IF NOT EXISTS characteristic_definitions(key text PRIMARY KEY,label
 COMMIT;
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS variant_stocks jsonb NOT NULL DEFAULT '[]', ADD COLUMN IF NOT EXISTS variant_label text NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS variants jsonb NOT NULL DEFAULT '[]';
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method text;

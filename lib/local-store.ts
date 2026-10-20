@@ -58,6 +58,7 @@ export class LocalStore {
  mutate(id:string,input:unknown,referrer?:string){
   const special=localPayment.safeParse(input);
   const a=special.success?special.data:actionSchema.parse(input);
+  if(a.action==="order"&&a.payment_method==="online")throw new LocalError(409,"Онлайн-оплата пока не подключена. Оплатите при получении.");
   return this.change(state=>{
    const me=this.profile(state,id,referrer),admin=me.role!=="buyer";
    if(a.action==="localPayment" || a.action==="localRefund"){
@@ -125,7 +126,7 @@ export class LocalStore {
      const bonus=z.number().int().nonnegative().parse((input as {spend_bonus?:number}).spend_bonus??0);
      if(bonus>this.balance(state,id)||subtotal-bonus*100<100)throw new LocalError(400,"Недостаточно бонусов или сумма после скидки меньше 1 ₽");
      const total=subtotal-bonus*100;
-     const order={id:randomUUID(),user_id:id,items,subtotal,total,bonus_spent:bonus,status:"pending",contact:a.contact,address:a.address,comment:a.comment||"",created_at:new Date().toISOString(),idempotency_key:a.idempotency_key,purchase_bonus:Math.floor(total*state.settings.purchase_percent/10000),referral_bonus:state.settings.referral_reward};
+     const order={id:randomUUID(),payment_method:a.payment_method,user_id:id,items,subtotal,total,bonus_spent:bonus,status:"pending",contact:a.contact,address:a.address,comment:a.comment||"",created_at:new Date().toISOString(),idempotency_key:a.idempotency_key,purchase_bonus:Math.floor(total*state.settings.purchase_percent/10000),referral_bonus:state.settings.referral_reward};
      state.orders.push(order);return {ok:true,orderId:order.id};
     }
     case "orderStatus":{

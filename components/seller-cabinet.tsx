@@ -8,10 +8,11 @@ import WorkspaceInbox from "./workspace-inbox";
 import BlindAudits from "./blind-audits";
 import Statistics from "./statistics";
 import SellerEarnings from "./seller-earnings";
+import {FaqContent} from "./role-faq";
 import SellerInventory from "./seller-inventory";
 import StockTransfers from "./stock-transfers";
 import SellerOrders from "./seller-orders";
-const sellerMenus=[{id:"transfers",name:"Перемещения",description:"Передача товара между продавцами",icon:Package},{id:"orders",name:"Заказы покупателей",description:"Общая лента и доставка",icon:ShoppingBag},{id:"stock",name:"Мои товары",description:"Наличие и варианты",icon:Package},{id:"revision",name:"Ревизия",description:"Пересчёт и проверка товара",icon:ClipboardCheck},{id:"history",name:"Профиль и история",description:"Штрафы, премии и события",icon:UserRound},{id:"sales",name:"Статистика продаж",description:"Продажи и ваш заработок",icon:BarChart3}];
+const sellerMenus=[{id:"faq",name:"FAQ · Помощь",description:"Как пользоваться кабинетом",icon:UserRound},{id:"transfers",name:"Перемещения",description:"Передача товара между продавцами",icon:Package},{id:"orders",name:"Заказы покупателей",description:"Общая лента и доставка",icon:ShoppingBag},{id:"stock",name:"Мои товары",description:"Наличие и варианты",icon:Package},{id:"revision",name:"Ревизия",description:"Пересчёт и проверка товара",icon:ClipboardCheck},{id:"history",name:"Профиль и история",description:"Штрафы, премии и события",icon:UserRound},{id:"sales",name:"Статистика продаж",description:"Продажи и ваш заработок",icon:BarChart3}];
 type Props={initialTab?:string;data:Snapshot;busy:boolean;act:(input:unknown)=>Promise<unknown>};
 export default function SellerCabinet({data,busy,act,initialTab="orders"}:Props){
  const [tab,setTab]=useState<string|null>(initialTab==="history"?null:initialTab),[error,setError]=useState("");
@@ -23,6 +24,7 @@ export default function SellerCabinet({data,busy,act,initialTab="orders"}:Props)
  {tab==="orders"?<SellerOrders data={data} busy={busy} act={act}/>:null}
  {tab==="stock"?<SellerInventory data={data} sellerId={data.me!.id} act={act} busy={busy}/>:null}
  {tab==="transfers"?<StockTransfers data={data} act={act} busy={busy}/>:null}
+ {tab==="faq"?<FaqContent role="seller"/>:null}
  {tab==="revision"?<BlindAudits data={data} act={act} busy={busy}/>:null}
  {tab==="history"?<section className="stack"><h2>Штрафы, премии и уведомления</h2>{data.workspace?.finance.filter(e=>e.seller_id===data.me?.id).toReversed().map(e=><article key={e.id} className="panel stack"><strong>{e.kind==="fine"?"Штраф −":"Премия +"}{money(e.amount)}</strong><p>{e.reason}</p><small>{new Date(e.created_at).toLocaleString("ru-RU")}</small></article>)}{data.workspace?.notices.filter(n=>n.user_id===data.me?.id).toReversed().map(n=><article className="panel stack" key={n.id}><small>{new Date(n.created_at).toLocaleString("ru-RU")} · демоуведомление</small><p className="preserve-lines">{n.text}</p></article>)}</section>:null}
  {tab==="sales"?<Statistics data={data} sellerId={data.me?.id}/>:null}
