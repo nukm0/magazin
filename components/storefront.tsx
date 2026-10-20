@@ -27,6 +27,7 @@ export default function Storefront(){
  const [localUser,setLocalUser]=useState("998579758"),[bonusSpend,setBonusSpend]=useState(0);
  const [query,setQuery]=useState(""),[category,setCategory]=useState(""),[sort,setSort]=useState("new"),[inStock,setInStock]=useState(false),[minPrice,setMinPrice]=useState(""),[maxPrice,setMaxPrice]=useState(""),[filters,setFilters]=useState(false),[slide,setSlide]=useState(0),[paused,setPaused]=useState(false);
  const [cart,setCart]=useState<Record<string,number>>({}),[cartLoaded,setCartLoaded]=useState(""),[selected,setSelected]=useState<Product|null>(null);
+ const autoClothing=useRef(false);
  const orderKey=useRef<string|null>(null),modalClose=useRef<HTMLButtonElement>(null),lastFocus=useRef<HTMLElement|null>(null);
  const load=useCallback(async()=>{
   const res=await fetch("/api/store",{cache:"no-store",headers:{"x-local-user":localUser,"x-local-referrer":new URLSearchParams(window.location.search).get("ref")||"",...(window.Telegram?.WebApp.initData?{Authorization:"tma "+window.Telegram.WebApp.initData}:{})}});
@@ -38,6 +39,7 @@ export default function Storefront(){
   if(isPreview){try{const saved=localStorage.getItem("magazin-preview-v2"),initial=prepareDemo(saved?JSON.parse(saved):catalogPreview()),id=sessionStorage.getItem("magazin-demo-user")||initial.team.find(p=>p.role==="owner")?.id||initial.me!.id;setData(switchPreviewProfile(initial,id));}catch{setData(prepareDemo(catalogPreview()));}setLoaded(true);}
   else load().catch(e=>setError(e.message)).finally(()=>setLoaded(true));
  },[load]);
+ useEffect(()=>{if(!preview||!loaded||data.me?.role!=="owner"||data.workspace?.clothingDemoLoaded||autoClothing.current||new URLSearchParams(window.location.search).get("example")!=="clothing")return;autoClothing.current=true;void act({action:"loadClothingDemo"}).then(()=>setNotice("Демомагазин одежды загружен")).catch(()=>{});},[preview,loaded,data.me?.role,data.workspace?.clothingDemoLoaded]);
  useEffect(()=>{if(!preview||!loaded)return;const id=setInterval(()=>{void commitPreview({action:"refreshDemo"}).catch(e=>setError(e.message));},60000);return()=>clearInterval(id);},[preview,loaded]);
  const cartKey=preview?"magazin-cart-preview-v3-"+(data.me?.id||"guest"):(data.local?"magazin-local-cart-v1-":"magazin-cart-v1-")+(data.me?.id||"guest");
  useEffect(()=>{try{const value=JSON.parse(localStorage.getItem(cartKey)||"{}");setCartVariants(JSON.parse(localStorage.getItem(cartKey+"-variants")||"{}"));setCart(Object.fromEntries(Object.entries(value).filter(([k,v])=>(()=>{try{parseCartLine(k);return true;}catch{return false;}})()&&typeof v==="number"&&Number.isInteger(v)&&v>0&&v<=99)) as Record<string,number>);}catch{setCart({});}setCartLoaded(cartKey);},[cartKey]);
