@@ -38,3 +38,5 @@ COMMIT;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS variant_stocks jsonb NOT NULL DEFAULT '[]', ADD COLUMN IF NOT EXISTS variant_label text NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS variants jsonb NOT NULL DEFAULT '[]';
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method text;
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS no_seller_payment boolean NOT NULL DEFAULT false;

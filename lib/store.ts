@@ -94,8 +94,8 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const attributes=validateAttributes(categories,a.category_id,a.attributes,registry);
    const patch=variantPatch(a,a.id?(await c.query("SELECT * FROM products WHERE id=$1 FOR UPDATE",[a.id])).rows[0]:undefined);
    const args=[a.title,a.description,a.price,patch.stock,a.category_id,await savePicture(c,a.image_url),a.active];
-   if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7,attributes=$9,variant_stocks=$10,variant_label=$11,variants=$12 WHERE id=$8",[...args,a.id,JSON.stringify(attributes),JSON.stringify(patch.variant_stocks),patch.variant_label,JSON.stringify(patch.variants)]);
-   else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active,attributes,variant_stocks,variant_label,variants) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",[...args,JSON.stringify(attributes),JSON.stringify(patch.variant_stocks),patch.variant_label,JSON.stringify(patch.variants)]);
+   if(a.id)await c.query("UPDATE products SET title=$1,description=$2,price=$3,stock=$4,category_id=$5,image_url=$6,active=$7,attributes=$9,variant_stocks=$10,variant_label=$11,variants=$12,no_seller_payment=COALESCE($13,no_seller_payment) WHERE id=$8",[...args,a.id,JSON.stringify(attributes),JSON.stringify(patch.variant_stocks),patch.variant_label,JSON.stringify(patch.variants),a.no_seller_payment??null]);
+   else await c.query("INSERT INTO products(title,description,price,stock,category_id,image_url,active,attributes,variant_stocks,variant_label,variants,no_seller_payment) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",[...args,JSON.stringify(attributes),JSON.stringify(patch.variant_stocks),patch.variant_label,JSON.stringify(patch.variants),a.no_seller_payment??false]);
   }
   if(a.action==="deleteProduct")await c.query("UPDATE products SET active=false WHERE id=$1",[a.id]);
   if(a.action==="order"){

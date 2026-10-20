@@ -103,7 +103,7 @@ export class LocalStore {
     case "deleteCategory":if(state.categories.some(c=>c.parent_id===a.id)||state.products.some(p=>p.category_id===a.id))throw new LocalError(409,"Сначала перенесите товары и подкатегории");state.categories=state.categories.filter(c=>c.id!==a.id);break;
     case "product":{
      if(a.category_id&&!state.categories.some(c=>c.id===a.category_id))throw new LocalError(400,"Категория не найдена");
-     const p={...variantPatch(a,state.products.find(p=>p.id===a.id)),attributes:validateAttributes(state.categories,a.category_id,a.attributes,state.characteristics||[]),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
+     const p={no_seller_payment:a.no_seller_payment??state.products.find(p=>p.id===a.id)?.no_seller_payment??false,...variantPatch(a,state.products.find(p=>p.id===a.id)),attributes:validateAttributes(state.categories,a.category_id,a.attributes,state.characteristics||[]),id:a.id||randomUUID(),title:a.title,description:a.description,price:a.price,category_id:a.category_id,image_url:this.image(state,a.image_url),active:a.active};
      const index=state.products.findIndex(x=>x.id===a.id);
      if(a.id&&index<0)throw new LocalError(404,"Товар не найден");
      if(index>=0)state.products[index]=p;else state.products.push(p);break;
