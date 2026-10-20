@@ -1,3 +1,4 @@
+import {databaseError} from "@/lib/database-error";
 import {notificationsEnabled,dispatchNotifications} from "@/lib/notification-outbox.server";
 import {NextResponse,after} from "next/server";
 import {isLocalRequest} from "@/lib/local-mode";
@@ -10,8 +11,9 @@ function fail(error:unknown){
  if(error instanceof Error && "status" in error && typeof error.status==="number")return NextResponse.json({error:error.message},{status:error.status});
  if(error instanceof ZodError)return NextResponse.json({error:error.issues[0]?.message||"Проверьте поля формы"},{status:400});
  if(error && typeof error==="object" && "code" in error && error.code==="23503")return NextResponse.json({error:"Категория используется. Сначала перенесите товары и подкатегории."},{status:409});
- console.error("Store request failed",error instanceof Error?error.name:"unknown");
- return NextResponse.json({error:"Не удалось обратиться к базе магазина. Проверьте подключение и миграцию."},{status:503});
+ const diagnostic=databaseError(error);
+ console.error("Store request failed",diagnostic.code);
+ return NextResponse.json({error:diagnostic.message,code:diagnostic.code},{status:503});
 }
 export async function GET(request:Request){try{return NextResponse.json(isLocalRequest(request)?(await import("@/lib/local-store")).localSnapshot(request):await snapshot(request));}catch(e){return fail(e);}}
 export async function POST(request:Request){
