@@ -6,6 +6,7 @@ import {catalogPreview,previewMutation,prepareDemo,switchPreviewProfile,previewR
 import {productMeasurements,clothingFields} from "@/lib/measurements";
 import {defaultSettings} from "@/lib/types";
 import Admin from "./admin";
+import BotSetup from "./bot-setup";
 import WorkspaceInbox from "./workspace-inbox";
 import WorkspaceProfile from "./workspace-profile";
 import ManagementDashboard from "./management-dashboard";
@@ -120,7 +121,7 @@ export default function Storefront(){
   </>}</>:null}
   {loaded&&tab==="profile"&&preview&&data.me&&data.me.role!=="seller"?<WorkspaceProfile key={data.me.id} data={data} act={act} busy={busy}/>:null}
   {loaded&&["profile","sellerOrders","sellerStock"].includes(tab)&&data.me?.role==="seller"?<SellerCabinet key={data.me.id+tab} data={data} busy={busy} act={act} initialTab={tab==="sellerStock"?"stock":tab==="sellerOrders"?"orders":"history"}/>:null}
-  {loaded&&tab==="admin"&&admin?(preview?<ManagementDashboard data={data} busy={busy} act={act}/>:<Admin data={data} busy={busy} act={act}/>):null}
+  {loaded&&tab==="admin"&&admin?(preview?<ManagementDashboard data={data} busy={busy} act={act}/>:<>{data.me?.role==="owner"&&!data.local?<BotSetup/>:null}<Admin data={data} busy={busy} act={act}/></>):null}
   {loaded&&tab==="sellers"&&admin&&preview?<SellersHub data={data} busy={busy} act={act}/>:null}
   <footer className="footer"><span>{data.settings.name}</span><span>С заботой о ваших покупках <Heart size={12}/></span></footer>
   </div></main>
