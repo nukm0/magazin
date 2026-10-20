@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {mutate,ApiError} from '../lib/store';
+test('Guest cannot create an order by supplying somebody else Telegram ID',async()=>{await assert.rejects(()=>mutate(new Request('https://shop.example/api/store'),{action:'order',user_id:'998579758',telegram_verified:true,idempotency_key:crypto.randomUUID(),items:[{productId:crypto.randomUUID(),quantity:1}],contact:'@testbuyer',address:'Тестовый адрес'}),(e:unknown)=>e instanceof ApiError&&e.status===401);});

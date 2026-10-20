@@ -40,3 +40,4 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS variant_stocks jsonb NOT NULL DEFA
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method text;
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS no_seller_payment boolean NOT NULL DEFAULT false;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_telegram jsonb;

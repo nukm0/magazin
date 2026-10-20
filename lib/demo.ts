@@ -1,3 +1,4 @@
+import {withdrawalActions,withdrawalMutation} from "./withdrawals";
 import {clothingDemo} from "./clothing-demo";
 import {supplyActions,supplyMutation,bindCrmProduct} from "./supplies";
 import {reservedStock,transferActions,transferMutation} from "./transfers";
@@ -12,6 +13,7 @@ import {defaultSettings,type Snapshot} from "./types";
 export function blankPreview():Snapshot{return {settings:structuredClone(defaultSettings),products:[],categories:[],me:{id:"998579758",first_name:"Владелец",last_name:"",username:"",photo_url:"",role:"owner",theme:null,referred_by:null,balance:0},orders:[],ledger:[],referrals:0,team:[],stats:{visitors:0,orders:0,paid:0,revenue:0},configured:true};}
 export function previewMutation(state:Snapshot,input:unknown):Snapshot{
  state=expiry(structuredClone(state));
+ if(input&&typeof input==="object"&&"action" in input&&withdrawalActions.has(String(input.action)))return withdrawalMutation(state,input);
  if(input&&typeof input==="object"&&"action" in input&&input.action==="loadClothingDemo")return clothingDemo(state);
  if(input&&typeof input==="object"&&"action" in input&&supplyActions.has(String(input.action)))return supplyMutation(state,input);
  if(input&&typeof input==="object"&&"action" in input&&transferActions.has(String(input.action)))return transferMutation(state,input);

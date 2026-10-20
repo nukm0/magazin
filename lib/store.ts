@@ -1,3 +1,6 @@
+import {z} from "zod";
+import {initWorkspace} from "./workspace";
+import {notificationsEnabled,enqueueNotice} from "./notification-outbox.server";
 import {variantPatch,assertLineStock} from "./variants";
 import {validateAttributes,validateMeasurements,saveCharacteristic,removeCharacteristic} from "./measurements";
 import {publicCatalog} from "./catalog";
@@ -44,7 +47,8 @@ export async function snapshot(request:Request):Promise<Snapshot> {
  db.query("SELECT key,label,unit FROM characteristic_definitions ORDER BY label")
  ]);
  if(me)me.balance=Number((await db.query("SELECT COALESCE(sum(amount),0)::float8 AS balance FROM bonus_ledger WHERE user_id=$1",[me.id])).rows[0].balance);
- return {settings:s.rows[0]?.data||defaultSettings,characteristics:definitions.rows,categories:c.rows,products:p.rows,me,orders:o?.rows||[],ledger:b?.rows||[],referrals:r?.rows[0].count||0,team:t?.rows||[],stats:stats?.rows[0]||{visitors:0,orders:0,paid:0,revenue:0},configured:true};
+ const result:Snapshot={telegram_verified:!!me,settings:s.rows[0]?.data||defaultSettings,characteristics:definitions.rows,categories:c.rows,products:p.rows,me,orders:o?.rows||[],ledger:b?.rows||[],referrals:r?.rows[0].count||0,team:t?.rows||[],stats:stats?.rows[0]||{visitors:0,orders:0,paid:0,revenue:0},configured:true};
+ if(me&&notificationsEnabled()){const admin=["owner","deputy"].includes(me.role);const rows=(await db.query("SELECT id,user_id,text,source,entity,created_at,read_at,telegram_status FROM app_notifications WHERE user_id=$1 OR $2 ORDER BY created_at DESC LIMIT 300",[me.id,admin])).rows;initWorkspace(result).workspace!.notices=rows.map(n=>({...n,created_at:new Date(n.created_at).toISOString(),...(n.read_at?{read_at:new Date(n.read_at).toISOString()}:{})}));}return result;
 }
 async function savePicture(c:PoolClient,value:string){
  if(!value.startsWith("data:"))return value;
@@ -52,6 +56,7 @@ async function savePicture(c:PoolClient,value:string){
 }
 async function audit(c:PoolClient,id:string,action:string) {await c.query("INSERT INTO audit_log(actor_id,action) VALUES($1,$2)",[id,action]);}
 export async function mutate(request:Request,input:unknown) {
+ if(input&&typeof input==="object"&&"action" in input&&input.action==="readNotices"){const a=z.object({ids:z.array(z.string().uuid()).max(1000)}).parse(input),me=await actor(request);if(!me)throw new ApiError(401,"Откройте магазин через Telegram");if(!notificationsEnabled())throw new ApiError(503,"Уведомления ещё не подключены");await database().query("UPDATE app_notifications SET read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND id=ANY($2::uuid[])",[me.id,a.ids]);return {ok:true};}
  const a=actionSchema.parse(input),me=await actor(request);
  if(!me)throw new ApiError(401,"Откройте магазин через Telegram");
  return transaction(c=>applyMutation(c,me,a));
@@ -99,6 +104,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
   }
   if(a.action==="deleteProduct")await c.query("UPDATE products SET active=false WHERE id=$1",[a.id]);
   if(a.action==="order"){
+   if(role!=="buyer")throw new ApiError(403,"Заказы оформляет только покупатель");
    if(a.payment_method==="online")throw new ApiError(409,"Онлайн-оплата пока не подключена. Оплатите при получении.");
    const existing=(await c.query("SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2",[me.id,a.idempotency_key])).rows[0];
    if(existing)return {ok:true,orderId:existing.id};
@@ -113,7 +119,8 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const total=items.reduce((s,i)=>s+i.price*i.quantity,0);
    if(!Number.isSafeInteger(total)||total>100000000)throw new ApiError(400,"Сумма заказа слишком большая");
    if((await c.query("SELECT 1 FROM orders WHERE user_id=$1 AND created_at>now()-interval '1 minute' LIMIT 1",[me.id])).rowCount)throw new ApiError(429,"Подождите минуту перед следующим заказом");
-   const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key,comment,payment_method) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",[me.id,JSON.stringify(items),total,a.contact,a.address,a.idempotency_key,a.comment||"",a.payment_method])).rows[0];
+   const order=(await c.query("INSERT INTO orders(user_id,items,total,contact,address,idempotency_key,comment,payment_method,buyer_telegram) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",[me.id,JSON.stringify(items),total,me.username?"@"+me.username:a.contact,a.address,a.idempotency_key,a.comment||"",a.payment_method,JSON.stringify({id:me.id,username:me.username,first_name:me.first_name,photo_url:me.photo_url,verified:true})])).rows[0];
+   if(notificationsEnabled()){await enqueueNotice(c,me.id,"Ваш заказ #"+order.id.slice(-8)+" создан. Ожидайте связи с сотрудником.","order-created:"+order.id,{type:"order",id:order.id});const recipients=(await c.query("SELECT id FROM profiles WHERE role='deputy' OR id=$1",[owner])).rows;for(const p of recipients)await enqueueNotice(c,p.id,"Новый заказ #"+order.id.slice(-8)+" от "+(me.username?"@"+me.username:me.first_name)+": "+total/100+" ₽.","order-created-admin:"+order.id,{type:"order",id:order.id});}
    return {ok:true,orderId:order.id};
   }
   if(a.action==="orderStatus"){
@@ -121,6 +128,7 @@ export async function applyMutation(c:PoolClient,me:Profile,a:ReturnType<typeof 
    const allowed:Record<string,string[]>={awaiting_payment_setup:["cancelled"],pending:["cancelled"],paid:["shipped"],shipped:["completed"]};
    if(!order || !allowed[order.status]?.includes(a.status))throw new ApiError(400,"Этот переход статуса недоступен");
    await c.query("UPDATE orders SET status=$1 WHERE id=$2",[a.status,a.id]);
+   if(notificationsEnabled())await enqueueNotice(c,order.user_id,"Заказ #"+a.id.slice(-8)+": "+({cancelled:"отменён",shipped:"передан в доставку",completed:"доставлен"}[a.status])+".","order-status:"+a.id+":"+a.status,{type:"order",id:a.id});
   }
   await audit(c,me.id,a.action);
   return {ok:true};
