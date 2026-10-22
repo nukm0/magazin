@@ -1,0 +1,2 @@
+export const blockColors=[{value:"#1b2034",name:"Графит"},{value:"#241b38",name:"Фиолетовый"},{value:"#142a3d",name:"Синий"},{value:"#342036",name:"Розовый"},{value:"#361d29",name:"Бордовый"},{value:"#17302b",name:"Зелёный"},{value:"#eeeeF4",name:"Светлый"}];
+export function blockInk(color:string){if(!/^#[0-9a-f]{6}$/i.test(color))return "#f4f0ff";const [r,g,b]=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));return (r*299+g*587+b*114)/1000>155?"#202135":"#f4f0ff"}

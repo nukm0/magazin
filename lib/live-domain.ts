@@ -8,6 +8,7 @@ export function liveDomain(state:Snapshot,input:unknown,identity:Profile):Snapsh
  if(['loadClothingDemo','refreshDemo','demoOrder','localPayment','selfAudit','inventoryReview','stockReceipt','orderStatus','transferOwner'].includes(action))throw new Error('Это действие недоступно в рабочем магазине');
  if(['cancelOrder','deleteOrder'].includes(action))return changeOrder(s,raw);
  if(action==='shopStyle'&&person.role!=='owner'&&raw.background!==s.workspace!.background)throw new Error('Фон приложения меняет только владелец');
+ if(action==='shopStyle'&&person.role!=='owner'&&raw.block_color!==undefined&&raw.block_color!==(s.workspace!.blockColor||''))throw new Error('Цвет блоков меняет только владелец');
  if(action==='assignRole'){const target=String(raw.target||'').replace(/^@/,'').toLowerCase();if(!s.team.some(p=>p.id===target||p.username.toLowerCase()===target))throw new Error('Пользователь должен сначала открыть магазин через Telegram');}
  if(action==='order'){
   const a=actionSchema.parse(input);if(a.action!=='order')throw new Error('Некорректный заказ');if(person.role!=='buyer')throw new Error('Заказ создаёт только покупатель');const previous=s.orders.find(o=>o.id===a.idempotency_key);if(previous){if(previous.user_id!==person.id)throw new Error('Нет доступа к заказу');return s;}
