@@ -1,7 +1,8 @@
 "use client";
+import BonusMenu from "./bonus-menu";
 import OrderSummary from "./order-summary";
 import {sellerContactUrl} from "@/lib/telegram-contact";
-import {useState} from "react";
+import {useEffect,useState} from "react";
 import {Gift,Copy,Store,ArrowUpRight,Receipt} from "lucide-react";
 import type {Snapshot,Order} from "@/lib/types";
 import {money,statusName} from "@/lib/format";
@@ -11,22 +12,22 @@ import {ShopAppearance} from "./workspace-settings";
 import OwnerTaxDashboard from "./owner-tax-dashboard";
 import FaqMenu from "./role-faq";
 import WorkspaceInbox from "./workspace-inbox";
-type Props={data:Snapshot;act:Action;busy:boolean};
-export default function WorkspaceProfile({data,act,busy}:Props){
+type Props={data:Snapshot;act:Action;busy:boolean;onShop?:()=>void};
+export default function WorkspaceProfile({data,act,busy,onShop}:Props){
  const p=data.me!,admin=["owner","deputy"].includes(p.role);
- const [taxes,setTaxes]=useState(false),[edit,setEdit]=useState(false),[copy,setCopy]=useState(""),[bonuses,setBonuses]=useState(false),[history,setHistory]=useState(false),[selected,setSelected]=useState<string|null>(null);
+ const [taxes,setTaxes]=useState(false),[edit,setEdit]=useState(false),[copy,setCopy]=useState(""),[bonuses,setBonuses]=useState(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("section")==="bonuses"),[history,setHistory]=useState(false),[selected,setSelected]=useState<string|null>(null);
+ useEffect(()=>{const url=new URL(window.location.href);if(url.searchParams.get("section")==="bonuses"){url.searchParams.delete("section");window.history.replaceState(window.history.state,"",url)}},[]);
  const link="https://t.me/"+(process.env.NEXT_PUBLIC_BOT_USERNAME||"magazinptz_bot")+"?start=ref_"+p.id;
  const roles={owner:"Владелец",deputy:"Заместитель владельца",buyer:"Покупатель",seller:"Продавец"};
  const own=data.orders.filter(o=>o.user_id===p.id).toReversed(),active=own.filter(activeBuyerOrder),past=own.filter(o=>!activeBuyerOrder(o)),order=own.find(o=>o.id===selected);
- const ledger=data.workspace?.bonuses.filter(b=>b.user_id===p.id).toReversed()||[];
  function orderCard(o:Order){return <button className="order-card panel" key={o.id} onClick={()=>setSelected(o.id)}><OrderSummary data={data} order={o}/><span className="order-open-hint">Подробнее о заказе →</span></button>;}
 
  return <div className="stack workspace-profile"><h1>Личный кабинет</h1><section className="identity-card panel"><div className="identity-avatar">{p.photo_url?<img src={p.photo_url} alt="Фото профиля"/>:p.first_name.slice(0,1)}</div><div className="identity-text"><h2>{p.first_name} {p.last_name}</h2><span>{p.username?"@"+p.username:"Username не указан"}</span><small>Telegram ID: {p.id}</small><span className="role-badge">{roles[p.role]}</span></div></section><WorkspaceInbox data={data} act={act} busy={busy}/><FaqMenu role={p.role}/>
- {admin?<section className="panel store-identity"><div className="store-logo">{data.workspace?.logo?<img src={data.workspace.logo} alt="Логотип магазина"/>:<Store size={30}/>}</div><div><h2>{data.settings.name}</h2><p>{data.settings.description}</p></div><button className="secondary" onClick={()=>setEdit(true)}>Изменить магазин</button></section>:<button className="panel bonus-summary" onClick={()=>setBonuses(true)}><Gift/><div><h2>Мои бонусы</h2><strong>{p.balance} бонусов</strong><small>Посмотреть начисления и списания →</small></div></button>}
+ {admin?<section className="panel store-identity"><div className="store-logo">{data.workspace?.logo?<img src={data.workspace.logo} alt="Логотип магазина"/>:<Store size={30}/>}</div><div><h2>{data.settings.name}</h2><p>{data.settings.description}</p></div><button className="secondary" onClick={()=>setEdit(true)}>Изменить магазин</button></section>:<button className="panel bonus-summary bonus-entry" onClick={()=>setBonuses(true)}><span className="bonus-entry-icon"><Gift size={26}/></span><div><small>ВАШ БОНУСНЫЙ СЧЁТ</small><h2>Мои бонусы</h2><strong>{p.balance.toLocaleString("ru-RU")} <span>бонусов</span></strong><small>Покупки, приглашения и история →</small></div></button>}
  {p.role==="owner"?<><button className="panel seller-earnings" onClick={()=>setTaxes(true)}><div className="seller-earnings-title"><Receipt size={22}/><h3>Налоги</h3></div><strong>{money((data.workspace?.supplies||[]).filter(b=>b.tax_paid_at&&Date.parse(b.tax_paid_at)<=Date.now()).reduce((n,b)=>n+b.tax,0))}</strong><small>Получено за всё время · открыть статистику →</small></button>{taxes?<Sheet title="Налоги" close={()=>setTaxes(false)}><OwnerTaxDashboard data={data} act={act} busy={busy}/></Sheet>:null}</>:null}
- <section className="panel stack"><h2>Реферальная программа</h2><p>Новый пользователь открывает бота по вашей ссылке и нажимает Start. После его первой выполненной покупки вам начисляется награда по правилам магазина.</p><a href={link} target="_blank" rel="noreferrer" className="referral-link">{link}<ArrowUpRight size={17}/></a><small>Ваших рефералов: {data.live?data.referrals:data.team.filter(person=>person.referred_by===p.id).length}</small><button className="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(link);setCopy("Ссылка скопирована");}catch{setCopy("Скопируйте ссылку выше");}}}><Copy size={16}/> Скопировать ссылку</button>{copy?<small role="status">{copy}</small>:null}</section>
+ {admin?<section className="panel stack"><h2>Реферальная программа</h2><p>Новый пользователь открывает бота по вашей ссылке и нажимает Start. После его первой выполненной покупки вам начисляется награда по правилам магазина.</p><a href={link} target="_blank" rel="noreferrer" className="referral-link">{link}<ArrowUpRight size={17}/></a><small>Ваших рефералов: {data.live?data.referrals:data.team.filter(person=>person.referred_by===p.id).length}</small><button className="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(link);setCopy("Ссылка скопирована");}catch{setCopy("Скопируйте ссылку выше");}}}><Copy size={16}/> Скопировать ссылку</button>{copy?<small role="status">{copy}</small>:null}</section>:null}
  {!admin?<section className="stack"><div className="section-heading"><h2>Мои заказы</h2><button className="secondary" onClick={()=>setHistory(true)}>История заказов ({past.length})</button></div>{active.map(orderCard)}{!active.length?<p>Сейчас нет заказов в процессе.</p>:null}</section>:null}
- {bonuses?<Sheet title="История бонусов" close={()=>setBonuses(false)}><div className="stack"><strong>Баланс: {p.balance} бонусов</strong>{ledger.map(b=><article className="panel stack" key={b.id}><strong>{b.amount>0?"+":""}{b.amount} бонусов</strong><p>{b.reason}</p><small>{new Date(b.created_at).toLocaleString("ru-RU")}</small></article>)}{!ledger.length?<p>Начислений и списаний пока нет.</p>:null}</div></Sheet>:null}
+ {bonuses?<Sheet title="Мои бонусы" close={()=>setBonuses(false)}><BonusMenu data={data} onShop={()=>{setBonuses(false);if(onShop)onShop();else window.location.assign("/")}}/></Sheet>:null}
  {history?<Sheet title="История заказов" close={()=>setHistory(false)}><div className="stack">{past.map(orderCard)}{!past.length?<p>Завершённых заказов пока нет.</p>:null}</div></Sheet>:null}
  {order?<Sheet title={"Заказ #"+order.id.slice(-8)} close={()=>setSelected(null)}><BuyerOrder key={order.id} data={data} order={order} act={act} busy={busy}/></Sheet>:null}
  {edit?<Sheet title="Настройки магазина" close={()=>setEdit(false)}><ShopAppearance data={data} act={act} busy={busy}/></Sheet>:null}
