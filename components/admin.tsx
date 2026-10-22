@@ -1,4 +1,5 @@
 "use client";
+import {prepareImage} from "@/lib/prepare-image";
 import {useState} from "react";
 import {crmRemaining} from "@/lib/supplies";
 import {RateEditor} from "./workspace-sellers";
@@ -16,8 +17,8 @@ import {money,statusName} from "@/lib/format";
 type Props={initialSection?:string;embedded?:boolean;data:Snapshot;busy:boolean;act:(input:unknown)=>Promise<unknown>};
 const labelTheme={blue:"Голубой",purple:"Фиолетовый",pink:"Розовый"};
 function ImageField({value,onChange,upload}:{value:string;onChange:(v:string)=>void;upload:(data:string)=>Promise<string>}){
- const [error,setError]=useState("");
- return <div className="image-field"><label>Изображение<input type="url" value={value.startsWith("data:")||value.startsWith("/")?"":value} onChange={e=>onChange(e.target.value)} placeholder="https://…"/></label><label className="upload-button"><ImagePlus size={17}/> Или загрузить с устройства<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>2*1024*1024||!["image/png","image/jpeg","image/webp"].includes(file.type)){setError("Нужно PNG, JPEG или WebP до 2 МБ");return;}const r=new FileReader();r.onload=async()=>{try{onChange(await upload(String(r.result)));setError("");}catch{setError("Не удалось загрузить изображение");}};r.readAsDataURL(file);}}/></label>{value?<div className="image-preview"><img src={value} alt="Предпросмотр"/><button type="button" aria-label="Удалить изображение" onClick={()=>onChange("")}><X size={15}/></button></div>:null}{error?<small role="alert" className="danger">{error}</small>:null}</div>;
+ const [error,setError]=useState(""),[processing,setProcessing]=useState(false);
+ return <div className="image-field" data-image-processing={processing||undefined} aria-busy={processing}><label>Изображение<input type="url" value={value.startsWith("data:")||value.startsWith("/")?"":value} onChange={e=>onChange(e.target.value)} placeholder="https://…"/></label><label className="upload-button"><ImagePlus size={17}/> {processing?"Подготавливаем фото…":"Или загрузить с устройства"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={processing} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setProcessing(true);setError("");try{onChange(await upload(await prepareImage(file)))}catch(e){setError(e instanceof Error?e.message:"Не удалось загрузить изображение")}finally{setProcessing(false)}}}/></label>{value?<div className="image-preview"><img src={value} alt="Предпросмотр"/><button type="button" aria-label="Удалить изображение" onClick={()=>onChange("")}><X size={15}/></button></div>:null}{error?<small role="alert" className="danger">{error}</small>:null}</div>;
 }
 export default function Admin({data,busy,act,initialSection="overview",embedded=false}:Props){
  const [section,setSection]=useState(initialSection),[editing,setEditing]=useState<Product|null>(null),[productOpen,setProductOpen]=useState(false),[productImage,setProductImage]=useState(""),[categoryId,setCategoryId]=useState(""),[draft,setDraft]=useState<Settings>(structuredClone(data.settings)),[formError,setFormError]=useState("");
