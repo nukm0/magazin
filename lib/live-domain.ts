@@ -19,6 +19,7 @@ export function liveDomain(state:Snapshot,input:unknown,identity:Profile):Snapsh
  if(person.role==='buyer'&&!['theme','complainOrder','readNotices'].includes(action))throw new Error('Нет доступа к управлению магазином');
  if(!admin&&person.role==='seller'&&!sellerActions.has(action)&&!['readNotices','submitAudit'].includes(action)&&!transferActions.has(action)&&action!=='requestWithdrawal')throw new Error('Нет доступа к управлению магазином');
  if(!(catalogActions.has(action)||workspaceActions.has(action)||supplyActions.has(action)||transferActions.has(action)||withdrawalActions.has(action)||sellerActions.has(action)))throw new Error('Неизвестное действие');
+ if(action==='settings'&&person.role!=='owner'&&JSON.stringify((raw.value as Partial<Snapshot['settings']>)?.jobs)!==JSON.stringify(s.settings.jobs))throw new Error('Вакансию настраивает только владелец');
  if(action==='settings'&&person.role!=='owner'&&String((raw.value as Partial<Snapshot['settings']>)?.rental_description||'')!==String(s.settings.rental_description||''))throw new Error('Условия аренды меняет только владелец');
  if(action==='product'){const old=s.products.find(p=>p.id===raw.id);if(!raw.crm_id&&!old?.crm_id)throw new Error('Сначала добавьте товар и поставку в CRM');delete raw.unit_cost;}
  s=previewMutation(s,raw);s.live=true;delete s.demoVersion;

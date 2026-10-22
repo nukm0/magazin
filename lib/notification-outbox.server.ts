@@ -1,3 +1,4 @@
+import {notificationPhoto} from "./bot-art";
 import {noticeCategory} from "./bot-screens";
 import {botAppUrl} from "./bot-config";
 import type {PoolClient} from "pg";
@@ -15,7 +16,7 @@ export async function sendTelegramNotice(n:{user_id:string;text:string;source?:s
  const e=n.entity,menu={text:"🏠 Главное меню",callback_data:"shop:menu"},reply=e?.forceReply?{force_reply:true,input_field_placeholder:"Напишите сообщение или прикрепите фото"}:e?.keyboard?{inline_keyboard:[...e.keyboard,...(e.keyboard.some(row=>row.some(b=>b.callback_data==="shop:menu"))?[]:[[menu]])]}:appUrl?{inline_keyboard:[[{text:"Открыть магазин",web_app:{url:appUrl}}],[menu]]}:{inline_keyboard:[[menu]]};
  const request=async(method:string,payload:unknown|FormData)=>{const multipart=payload instanceof FormData;const response=await transport("https://api.telegram.org/bot"+token+"/"+method,{method:"POST",...(!multipart?{headers:{"Content-Type":"application/json"}}:{}),body:multipart?payload:JSON.stringify(payload),signal:AbortSignal.timeout(9000)}),body=await response.json();return {ok:response.ok&&body.ok===true,retry:Math.max(15,Math.min(3600,Number(body.parameters?.retry_after)||60)),error:response.ok&&body.ok===true?"":"telegram_"+response.status};};
  try{
-  if(e?.photo){let photo=e.photo;if(photo.startsWith("/api/media/")&&appUrl)photo=new URL(photo,appUrl).toString();const caption=n.text.length<=1024?n.text:n.text.split("\n")[0],payload={chat_id:n.user_id,photo,caption,...(n.text.length<=1024&&reply?{reply_markup:reply}:{})};let result;
+  if(notificationPhoto(n.source||"",e?.photo)){let photo=notificationPhoto(n.source||"",e?.photo)!;if(photo.startsWith("/")&&appUrl)photo=new URL(photo,appUrl).toString();const caption=n.text.length<=1024?n.text:n.text.split("\n")[0],payload={chat_id:n.user_id,photo,caption,...(n.text.length<=1024&&reply?{reply_markup:reply}:{})};let result;
    if(photo.startsWith("data:image/")){const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(photo);if(!match)return {ok:false,retry:3600,error:"invalid_photo"};const form=new FormData();form.set("chat_id",n.user_id);form.set("caption",caption);form.set("photo",new Blob([Buffer.from(match[2],"base64")],{type:"image/"+match[1]}),"shop."+match[1]);if(n.text.length<=1024&&reply)form.set("reply_markup",JSON.stringify(reply));result=await request("sendPhoto",form);}else result=await request("sendPhoto",payload);
    if(result.ok&&n.text.length<=1024)return result;
    // Preserve the text and links even if Telegram cannot load the optional image.

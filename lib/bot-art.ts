@@ -1,0 +1,1 @@
+export function notificationPhoto(source:string,existing?:string){if(existing)return existing;if(/(?:^|:)(start|bot-menu|cancel):/.test(source))return undefined;if(/jobs|vacancy/.test(source))return "/bot-media/jobs.jpg";if(/order|claimed|accepted|delivered|returned|expired/.test(source))return "/bot-media/orders.jpg";return "/bot-media/notifications.jpg"}
