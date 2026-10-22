@@ -14,7 +14,7 @@ export function liveDomain(state:Snapshot,input:unknown,identity:Profile):Snapsh
   const a=actionSchema.parse(input);if(a.action!=='order')throw new Error('Некорректный заказ');if(person.role!=='buyer')throw new Error('Заказ создаёт только покупатель');const previous=s.orders.find(o=>o.id===a.idempotency_key);if(previous){if(previous.user_id!==person.id)throw new Error('Нет доступа к заказу');return s;}
   if(s.orders.some(o=>o.user_id===person.id&&Date.now()-Date.parse(o.created_at)<60000))throw new Error('Подождите минуту перед следующим заказом');
   s=sellerMutation(s,{...raw,action:'demoOrder',id:a.idempotency_key,contact:person.username?'@'+person.username:a.contact});const o=s.orders.find(o=>o.id===a.idempotency_key)!;o.buyer_telegram={id:person.id,first_name:person.first_name,username:person.username,photo_url:person.photo_url,verified:true};
-  for(const n of s.workspace!.notices.filter(n=>n.user_id===person.id&&n.source.includes(o.id)))n.text=orderCreatedMessage(s.settings.name,o.id,o.total,o.items);return s;
+  for(const n of s.workspace!.notices.filter(n=>n.user_id===person.id&&n.source.includes(o.id)))n.text=orderCreatedMessage(s.settings.name,o.id,o.total,o.items,undefined,o.discount||0);return s;
  }
  if(person.role==='buyer'&&!['theme','complainOrder','readNotices'].includes(action))throw new Error('Нет доступа к управлению магазином');
  if(!admin&&person.role==='seller'&&!sellerActions.has(action)&&!['readNotices','submitAudit'].includes(action)&&!transferActions.has(action)&&action!=='requestWithdrawal')throw new Error('Нет доступа к управлению магазином');
