@@ -1,3 +1,4 @@
+import {sellerContactUrl} from "./telegram-contact";
 import {availableStock,changeSellerStock,reservedStock} from "./transfers";
 import {assertLineStock,takeStock,lineTotals} from "./variants";
 import {initWorkspace,payout,notify,rewardOrder} from "./workspace";
@@ -34,7 +35,7 @@ export function sellerMutation(state:Snapshot,input:unknown):Snapshot{
  if(["claimOrder","returnOrder","acceptOrder","deliverOrder"].includes(a.action)){
  const o=s.orders.find(o=>o.id===a.id);if(!o)throw new Error("Заказ не найден");
  const event=(type:"claimed"|"returned"|"accepted"|"delivered",reason="")=>{const eventId=crypto.randomUUID();s.orderEvents!.push({id:eventId,order_id:o.id,seller_id:me.id,type,reason,created_at});if(["claimed","accepted"].includes(type))for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,`Продавец @${me.username} ${type==="claimed"?"закрепил за собой":"принял в доставку"} заказ #${o.id.slice(-8)}.`,"order-activity:"+o.id+":"+eventId);};
- if(a.action==="claimOrder"){if(o.status!=="open"||o.seller_id)throw new Error("Заказ уже взял другой продавец");o.status="claimed";o.seller_id=me.id;o.claimed_at=created_at;event("claimed");notify(s,o.user_id,"Ваш заказ взял продавец @"+me.username+". Он свяжется с вами.","claimed:"+o.id+":"+created_at);}
+ if(a.action==="claimOrder"){if(o.status!=="open"||o.seller_id)throw new Error("Заказ уже взял другой продавец");o.status="claimed";o.seller_id=me.id;o.claimed_at=created_at;event("claimed");const source="claimed:"+o.id+":"+created_at;notify(s,o.user_id,"🛍 Заказ #"+o.id.slice(-8)+" принят в работу\n\nВаш продавец: "+me.first_name+(me.username?" (@"+me.username+")":"")+".\nОн уточнит детали покупки. Вы также можете написать ему кнопкой ниже.",source);const n=s.workspace!.notices.find(n=>n.source===source&&n.user_id===o.user_id),url=sellerContactUrl(me,"Здравствуйте! Хочу уточнить детали заказа #"+o.id.slice(-8)+" в магазине «"+s.settings.name+"».");if(n)n.entity={type:"order",id:o.id,...(url?{keyboard:[[{text:"💬 Написать продавцу",url}]]}:{})};}
  else{
  if(o.seller_id!==me.id)throw new Error("Заказ закреплён за другим продавцом");
  if(a.action==="returnOrder"){if(o.status!=="claimed")throw new Error("Вернуть можно заказ до принятия в доставку");o.status="open";o.seller_id=null;event("returned",a.reason);notify(s,o.user_id,"Заказ возвращён в общую очередь. Ищем другого продавца.","returned-buyer:"+o.id+":"+created_at);for(const p of s.team.filter(p=>["owner","deputy"].includes(p.role)))notify(s,p.id,"Продавец @"+me.username+" вернул заказ #"+o.id.slice(-8)+". Причина: "+a.reason,"returned-admin:"+o.id+":"+created_at);}
